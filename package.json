@@ -1,0 +1,30 @@
+{
+  "name": "agent-lens",
+  "version": "1.0.0",
+  "description": "Transparent local proxy for LLM request interception and logging",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "node --enable-source-maps dist/index.js"
+  },
+  "keywords": [
+    "proxy",
+    "sse",
+    "llm",
+    "observability"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "typescript": "^5.9.3"
+  }
+}

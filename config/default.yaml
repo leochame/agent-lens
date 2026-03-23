@@ -1,0 +1,26 @@
+listen:
+  host: 127.0.0.1
+  port: 5290
+routing:
+  defaultProvider: cc
+  byHeader: x-target-provider
+  byPathPrefix: {}
+  autoDetectProviderByFormat: true
+  formatProviders:
+    anthropic: cc
+providers:
+  cc:
+    baseURL: https://ruoli.dev/v1
+    hostHeader: ruoli.dev
+    authMode: passthrough
+    pathRewrite: []
+logging:
+  filePath: ./logs/requests.jsonl
+  # <= 0 means unlimited raw response capture for archive
+  maxArchiveBodyBytes: 0
+  redactHeaders:
+    - authorization
+    - x-api-key
+    - cookie
+    - set-cookie
+requestTimeoutMs: 120000
