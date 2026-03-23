@@ -656,7 +656,7 @@ export function renderAdminHtml(): string {
 
     <div class="card">
       <div class="section-title">
-        <h2>Agent Internal Timeline</h2>
+        <h2>Request / Response Raw Logs</h2>
         <span id="logState" class="badge warn dot">连接中</span>
       </div>
       <div class="log-toolbar">
@@ -672,25 +672,6 @@ export function renderAdminHtml(): string {
             <option value="100">100</option>
           </select>
         </label>
-      </div>
-      <div class="log-toolbar">
-        <label class="field" style="min-width:220px;">
-          请求 ID
-          <select id="sessionFilter">
-            <option value="">全部请求（可选筛选）</option>
-          </select>
-        </label>
-        <label class="field" style="min-width:200px;">
-          开始时间
-          <input id="timeFrom" type="datetime-local" />
-        </label>
-        <label class="field" style="min-width:200px;">
-          结束时间
-          <input id="timeTo" type="datetime-local" />
-        </label>
-        <div class="actions">
-          <button class="ghost" id="clearFilterBtn">清空筛选</button>
-        </div>
       </div>
       <div id="logOverview" class="overview-grid"></div>
       <div id="logList" class="log-list"></div>
@@ -722,13 +703,11 @@ export function renderAdminHtml(): string {
     let latestVisibleLogs = [];
     let currentJsonText = "";
     let currentJsonRawText = "";
+    let currentJsonValue = null;
     let currentJsonLogId = "";
     let jsonCollapsed = false;
     const jsonNodeExpanded = new Set();
     const jsonNodeCollapsed = new Set();
-    const expandedMessageIds = new Set();
-    const expandedArchiveIds = new Set();
-    const archiveDetailCache = new Map();
 
     const byId = (id) => document.getElementById(id);
 
@@ -763,55 +742,12 @@ export function renderAdminHtml(): string {
       return d.toLocaleTimeString();
     }
 
-    function toLocalInputValue(ts) {
-      if (!ts) return "";
-      const d = new Date(ts);
-      if (Number.isNaN(d.getTime())) return "";
-      const p = (n) => String(n).padStart(2, "0");
-      return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes());
-    }
-
-    function parseInputTime(value) {
-      if (!value) return null;
-      const d = new Date(value);
-      const t = d.getTime();
-      return Number.isFinite(t) ? t : null;
-    }
-
-    function refreshSessionFilterOptions(items) {
-      const sel = byId("sessionFilter");
-      const current = sel.value || "";
-      const options = Array.from(new Set((Array.isArray(items) ? items : []).map((x) => x?.requestId || "").filter(Boolean))).sort();
-      sel.innerHTML = ['<option value="">全部请求（可选筛选）</option>']
-        .concat(options.map((s) => '<option value="' + escHtml(s) + '">' + escHtml(s) + "</option>"))
-        .join("");
-      sel.value = options.includes(current) ? current : "";
-    }
-
     function itemLogId(it) {
       return String(it?.logId || (it?.requestId || "") + "|" + (it?.startedAt || "") + "|" + (it?.endedAt || "") + "|" + String(it?.statusCode ?? ""));
     }
 
     function applyLogFilters(items) {
-      const arr = Array.isArray(items) ? items : [];
-      const requestId = byId("sessionFilter")?.value || "";
-      const fromMs = parseInputTime(byId("timeFrom")?.value || "");
-      const toMs = parseInputTime(byId("timeTo")?.value || "");
-      return arr.filter((it) => {
-        if (!hasRequestMessages(it)) {
-          return false;
-        }
-        if (requestId && (it?.requestId || "") !== requestId) {
-          return false;
-        }
-        const t = Date.parse(it?.startedAt || it?.endedAt || "");
-        if (!Number.isFinite(t)) {
-          return !fromMs && !toMs;
-        }
-        if (fromMs !== null && t < fromMs) return false;
-        if (toMs !== null && t > toMs) return false;
-        return true;
-      });
+      return Array.isArray(items) ? items : [];
     }
 
     function escHtml(text) {
@@ -1023,146 +959,6 @@ export function renderAdminHtml(): string {
       return "pill-err";
     }
 
-    function normalizePreview(text) {
-      if (text === undefined || text === null) return "";
-      return String(text)
-        .replace(/\\r\\n?/g, "\\n")
-        .replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]/g, "");
-    }
-
-    function stableHash(text) {
-      const s = String(text || "");
-      let h = 0;
-      for (let i = 0; i < s.length; i += 1) {
-        h = (h * 31 + s.charCodeAt(i)) >>> 0;
-      }
-      return h.toString(16);
-    }
-
-    function selectDisplayMessages(it) {
-      const all = (it.request && Array.isArray(it.request.messages)) ? it.request.messages : [];
-      return all
-        .map((m) => ({
-          role: m.role || "unknown",
-          preview: normalizePreview(m.preview || ""),
-          kind: m.kind || "text",
-          toolName: m.toolName || null,
-          toolCallId: m.toolCallId || null
-        }))
-        .filter((m) => m.preview !== "");
-    }
-
-    function hasRequestMessages(it) {
-      return selectDisplayMessages(it).length > 0;
-    }
-
-    function selectResponseMessages(it) {
-      const all = (it.response && Array.isArray(it.response.messages)) ? it.response.messages : [];
-      return all
-        .map((m) => ({
-          role: m.role || "assistant",
-          preview: normalizePreview(m.preview || ""),
-          kind: m.kind || "text",
-          toolName: m.toolName || null,
-          toolCallId: m.toolCallId || null
-        }))
-        .filter((m) => m.preview !== "");
-    }
-
-    function roleClass(role) {
-      const r = String(role || "unknown").toLowerCase();
-      return "role-" + (r === "system" || r === "assistant" || r === "user" || r === "tool" ? r : "assistant");
-    }
-
-    function bubbleClass(side, msg) {
-      if (msg.kind === "system") return "bubble " + side + " system";
-      if (msg.kind === "tool_call" || msg.kind === "tool_result") return "bubble " + side + " tool";
-      return "bubble " + side;
-    }
-
-    function archiveBodyText(record) {
-      if (!record || !record.body || typeof record.body !== "object") return "";
-      const body = record.body;
-      if (body.encoding === "utf8") {
-        return String(body.text || "");
-      }
-      if (body.encoding === "base64") {
-        return "[binary content] base64 length=" + String((body.base64 || "").length) + " bytes=" + String(body.byteLength || 0);
-      }
-      return "";
-    }
-
-    function renderArchiveColumn(title, record) {
-      if (!record) {
-        return '<div class="archive-col"><div class="archive-title">' + escHtml(title) + '</div><div class="muted">暂无归档内容</div></div>';
-      }
-      const meta = [
-        "type: " + (record.type || "-"),
-        "content-type: " + (record.contentType || "-"),
-        typeof record.statusCode === "number" ? ("status: " + record.statusCode) : "",
-        record.truncated ? "truncated: true" : "",
-        record.isSse ? "sse: true" : ""
-      ].filter(Boolean).join(" | ");
-      let extra = "";
-      if (record.sse && typeof record.sse === "object") {
-        extra = '<div class="muted">events: ' + escHtml(String(record.sse.eventCount || 0)) + " | done: " + escHtml(String(Boolean(record.sse.doneSeen))) + "</div>";
-      }
-      return '<div class="archive-col">' +
-        '<div class="archive-title">' + escHtml(title) + "</div>" +
-        '<div class="muted">' + escHtml(meta) + "</div>" +
-        extra +
-        '<pre class="archive-pre">' + escHtml(archiveBodyText(record)) + "</pre>" +
-      "</div>";
-    }
-
-    function renderArchivePanel(it) {
-      const lid = itemLogId(it);
-      const rid = it.requestId || "";
-      if (!expandedArchiveIds.has(lid)) {
-        return "";
-      }
-      const cache = archiveDetailCache.get(rid);
-      if (!cache || cache.status === "loading") {
-        return '<div class="archive-panel" data-no-open-json="1"><div class="muted">归档加载中...</div></div>';
-      }
-      if (cache.status === "error") {
-        return '<div class="archive-panel" data-no-open-json="1"><div class="muted">归档加载失败，请稍后重试。</div></div>';
-      }
-      const detail = cache.detail || {};
-      return '<div class="archive-panel" data-no-open-json="1">' +
-        '<div class="archive-title">归档原文（request/response）</div>' +
-        '<div class="archive-grid">' +
-          renderArchiveColumn("Request Raw", detail.request || null) +
-          renderArchiveColumn("Response Raw", detail.response || null) +
-        "</div>" +
-      "</div>";
-    }
-
-    async function ensureArchiveDetail(it) {
-      const rid = it?.requestId;
-      if (!rid) return;
-      const cached = archiveDetailCache.get(rid);
-      if (cached && (cached.status === "loading" || cached.status === "ready")) {
-        return;
-      }
-      archiveDetailCache.set(rid, { status: "loading", detail: null });
-      renderLogs(latestVisibleLogs);
-      try {
-        const sessionParam = it.sessionId ? "&sessionId=" + encodeURIComponent(it.sessionId) : "";
-        const r = await fetch("/__admin/api/logs/detail?requestId=" + encodeURIComponent(rid) + sessionParam);
-        if (!r.ok) {
-          archiveDetailCache.set(rid, { status: "error", detail: null });
-          renderLogs(latestVisibleLogs);
-          return;
-        }
-        const body = await r.json();
-        archiveDetailCache.set(rid, { status: "ready", detail: body.detail || null });
-      } catch {
-        archiveDetailCache.set(rid, { status: "error", detail: null });
-      }
-      renderLogs(latestVisibleLogs);
-    }
-
     function renderOverview(items) {
       const arr = Array.isArray(items) ? items : [];
       const total = arr.length;
@@ -1187,157 +983,9 @@ export function renderAdminHtml(): string {
       ).join("");
     }
 
-    function responseShownText(it) {
-      const msgs = selectResponseMessages(it);
-      const joined = msgs.map((m) => m.preview || "").filter(Boolean).join("\\n");
-      if (joined) return normalizePreview(joined);
-      return normalizePreview(it?.response?.responsePreview || "");
-    }
-
-    function extractTextFromOpenAiJsonBody(body) {
-      if (!body || typeof body !== "object") return "";
-      const parts = [];
-      if (Array.isArray(body.output)) {
-        body.output.forEach((o) => {
-          if (!o || typeof o !== "object") return;
-          if (o.type === "message" && Array.isArray(o.content)) {
-            o.content.forEach((c) => {
-              if (!c || typeof c !== "object") return;
-              const t = c.text || c.output_text || c.input_text || "";
-              if (typeof t === "string" && t) parts.push(t);
-            });
-          }
-          if (typeof o.output_text === "string") parts.push(o.output_text);
-        });
-      }
-      if (Array.isArray(body.choices) && body.choices[0] && typeof body.choices[0] === "object") {
-        const msg = body.choices[0].message;
-        if (msg && typeof msg === "object") {
-          if (typeof msg.content === "string") parts.push(msg.content);
-          if (Array.isArray(msg.content)) {
-            msg.content.forEach((c) => {
-              if (c && typeof c === "object" && typeof c.text === "string") parts.push(c.text);
-            });
-          }
-        }
-      }
-      return normalizePreview(parts.join("\\n"));
-    }
-
-    function extractTextFromAnthropicJsonBody(body) {
-      if (!body || typeof body !== "object") return "";
-      const content = Array.isArray(body.content) ? body.content : [];
-      const text = content
-        .map((c) => (c && typeof c === "object" && c.type === "text" ? (c.text || "") : ""))
-        .filter(Boolean)
-        .join("\\n");
-      return normalizePreview(text || body.completion || "");
-    }
-
-    function responseIntegrityBadge(it) {
-      const rid = it.requestId || "";
-      const cache = archiveDetailCache.get(rid);
-      if (!cache || cache.status !== "ready" || !cache.detail?.response) return "";
-      const rec = cache.detail.response;
-      if (!rec.body || rec.body.encoding !== "utf8") return "";
-      const rawText = normalizePreview(rec.body.text || "");
-      const shown = responseShownText(it);
-      if (!rawText || !shown) return "";
-
-      let rawExtracted = rawText;
-      if ((rec.contentType || "").toLowerCase().includes("application/json")) {
-        try {
-          const body = JSON.parse(rawText);
-          if (it.apiFormat === "openai") {
-            rawExtracted = extractTextFromOpenAiJsonBody(body) || rawText;
-          } else if (it.apiFormat === "anthropic") {
-            rawExtracted = extractTextFromAnthropicJsonBody(body) || rawText;
-          }
-        } catch {
-          rawExtracted = rawText;
-        }
-      }
-      const probe = shown.slice(0, Math.min(48, shown.length));
-      const ok = !probe || rawExtracted.includes(probe);
-      if (ok) {
-        return '<span class="badge ok">响应完整性: 正常</span>';
-      }
-      return '<span class="badge warn">响应完整性: 可能丢字</span>';
-    }
-
-    function timelineEvents(it) {
-      const req = Array.isArray(it.request?.messages) ? it.request.messages : [];
-      const res = Array.isArray(it.response?.messages) ? it.response.messages : [];
-      const toEvent = (m, phase, idx) => ({
-        id: itemLogId(it) + "-" + phase + "-" + idx + "-" + stableHash((m.role || "") + "|" + (m.preview || "")),
-        phase,
-        role: m.role || "unknown",
-        kind: m.kind || "text",
-        preview: normalizePreview(m.preview || ""),
-        toolCallId: m.toolCallId || null,
-        toolName: m.toolName || null
-      });
-      const reqEvents = req.map((m, i) => toEvent(m, "req", i));
-      let resEvents = res.map((m, i) => toEvent(m, "res", i));
-
-      if (resEvents.length === 0) {
-        if (it.response?.responsePreview) {
-          resEvents = [toEvent({
-            role: "assistant",
-            kind: "text",
-            preview: it.response.responsePreview
-          }, "res", 0)];
-        } else if (typeof it.statusCode === "number") {
-          resEvents = [toEvent({
-            role: "assistant",
-            kind: "text",
-            preview: "response captured (status=" + it.statusCode + ") but no structured message extracted"
-          }, "res", 0)];
-        }
-      }
-      return { reqEvents, resEvents };
-    }
-
-    function renderEventList(events) {
-      return events.filter((e) => e.preview).map((e) => {
-        const expanded = expandedMessageIds.has(e.id);
-        return '<div class="event-item phase-' + escHtml(e.phase) + " kind-" + escHtml(e.kind) + '">' +
-          '<div class="event-meta">' +
-            '<span class="role-tag ' + escHtml(roleClass(e.role)) + '">' + escHtml(e.role) + "</span>" +
-            '<span class="muted">' + escHtml(e.phase === "req" ? "request" : "response") + (e.toolCallId ? (" | call_id=" + e.toolCallId) : "") + "</span>" +
-            '<button class="link-btn" data-action="toggle-msg" data-state="' + (expanded ? "expanded" : "collapsed") + '" data-msg-id="' + escHtml(e.id) + '">' + (expanded ? "收起" : "展开") + "</button>" +
-          "</div>" +
-          '<div class="' + bubbleClass(e.phase === "req" ? "req" : "res", e) + ' chat-text ' + (expanded ? "" : "collapsed") + '" data-msg-id="' + escHtml(e.id) + '">' + escHtml(e.preview) + "</div>" +
-        "</div>";
-      }).join("");
-    }
-
-    function renderTimeline(it) {
-      const events = timelineEvents(it);
-      const reqHtml = renderEventList(events.reqEvents);
-      const resHtml = renderEventList(events.resEvents);
-      return '<div class="timeline">' +
-        '<div class="timeline-head"><span class="timeline-title">Timeline</span><span class="muted">按请求→响应顺序展示结构化消息</span></div>' +
-        '<div class="timeline-grid">' +
-          '<div class="timeline-lane request-lane"><div class="lane-title">Request Events</div><div class="event-list">' + (reqHtml || '<div class="muted">暂无请求消息</div>') + "</div></div>" +
-          '<div class="timeline-lane response-lane"><div class="lane-title">Response Events</div><div class="event-list">' + (resHtml || '<div class="muted">暂无响应消息</div>') + "</div></div>" +
-        "</div>" +
-      "</div>";
-    }
-
     function renderLogs(items) {
       const list = byId("logList");
-      // Preserve expanded state from current DOM before rerender.
-      list.querySelectorAll(".chat-text").forEach((node) => {
-        const id = node.getAttribute("data-msg-id");
-        if (!id) return;
-        if (!node.classList.contains("collapsed")) {
-          expandedMessageIds.add(id);
-        }
-      });
-
       latestAllLogs = Array.isArray(items) ? items : [];
-      refreshSessionFilterOptions(latestAllLogs);
       const visible = applyLogFilters(latestAllLogs);
       latestVisibleLogs = visible;
       renderOverview(visible);
@@ -1345,24 +993,15 @@ export function renderAdminHtml(): string {
         list.innerHTML = '<div class="log-empty">暂无日志。触发一次 Claude/OpenAI 请求后会显示在这里。</div>';
         return;
       }
+
       list.innerHTML = visible.map((it) => {
-        const reqParseErr = it.request?.parseError
-          ? '<div class="bubble req"><strong>request parseError:</strong> ' + escHtml(normalizePreview(it.request.parseError)) + "</div>"
-          : "";
-        const resParseErr = it.response?.parseError
-          ? '<div class="bubble res"><strong>response parseError:</strong> ' + escHtml(normalizePreview(it.response.parseError)) + "</div>"
-          : "";
         const lid = itemLogId(it);
-        const archiveOpen = expandedArchiveIds.has(lid);
         const duration = typeof it.durationMs === "number" ? (it.durationMs + "ms") : "-";
-        const integrity = responseIntegrityBadge(it);
         return '<div class="log-item">' +
           '<div class="log-head">' +
           '<div class="mono">' + escHtml(it.requestId || "-") + "</div>" +
           '<div class="actions">' +
             '<span class="' + statusClass(it.statusCode) + '">' + (it.statusCode ?? "pending") + "</span>" +
-            integrity +
-            '<button class="link-btn" data-no-open-json="1" data-action="toggle-archive" data-log-id="' + escHtml(lid) + '">' + (archiveOpen ? "收起归档" : "打开归档") + '</button>' +
             '<button class="link-btn" data-action="view-json" data-log-id="' + escHtml(lid) + '">查看 JSON</button>' +
           '</div>' +
           "</div>" +
@@ -1373,8 +1012,6 @@ export function renderAdminHtml(): string {
           '<span>path: ' + escHtml(it.path || "-") + "</span>" +
           '<span>duration: ' + escHtml(duration) + "</span>" +
           "</div>" +
-          renderTimeline(it) + reqParseErr + resParseErr +
-          renderArchivePanel(it) +
           "</div>";
       }).join("");
 
@@ -1384,46 +1021,6 @@ export function renderAdminHtml(): string {
           const lid = btn.getAttribute("data-log-id");
           if (!lid) return;
           void openJsonModalByLogId(lid);
-        });
-      });
-      list.querySelectorAll('button[data-action="toggle-msg"]').forEach((btn) => {
-        btn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          const msgId = btn.getAttribute("data-msg-id");
-          if (!msgId) return;
-          const block = list.querySelector('.chat-text[data-msg-id="' + msgId + '"]');
-          if (!block) return;
-          const collapsed = btn.getAttribute("data-state") !== "expanded";
-          if (collapsed) {
-            block.classList.remove("collapsed");
-            btn.setAttribute("data-state", "expanded");
-            btn.textContent = "收起";
-            expandedMessageIds.add(msgId);
-          } else {
-            block.classList.add("collapsed");
-            btn.setAttribute("data-state", "collapsed");
-            btn.textContent = "展开";
-            expandedMessageIds.delete(msgId);
-          }
-        });
-      });
-      list.querySelectorAll('button[data-action="toggle-archive"]').forEach((btn) => {
-        btn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          const lid = btn.getAttribute("data-log-id");
-          if (!lid) return;
-          const item = latestVisibleLogs.find((x) => itemLogId(x) === lid);
-          if (!item) return;
-          if (expandedArchiveIds.has(lid)) {
-            expandedArchiveIds.delete(lid);
-            renderLogs(latestVisibleLogs);
-            return;
-          }
-          expandedArchiveIds.add(lid);
-          void ensureArchiveDetail(item);
-          renderLogs(latestVisibleLogs);
         });
       });
       list.querySelectorAll(".log-item").forEach((card) => {
@@ -1440,75 +1037,113 @@ export function renderAdminHtml(): string {
       });
     }
 
-    function toAgentJson(it) {
-      return {
-        requestId: it.requestId,
-        sessionId: it.sessionId ?? null,
-        startedAt: it.startedAt ?? null,
-        endedAt: it.endedAt ?? null,
-        durationMs: it.durationMs ?? null,
-        provider: it.provider ?? null,
-        apiFormat: it.apiFormat ?? null,
-        method: it.method ?? null,
-        path: it.path ?? null,
-        model: it.model ?? null,
-        // Keep response meta only for quick status validation.
-        statusCode: it.statusCode ?? null,
-        finishReason: it.finishReason ?? null,
-        request: it.request
-          ? {
-              stream: it.request.stream ?? null,
-              systemPromptPreview: it.request.systemPromptPreview ?? null,
-              messages: Array.isArray(it.request.messages) ? it.request.messages : [],
-              tools: Array.isArray(it.request.tools) ? it.request.tools : [],
-              parseError: it.request.parseError ?? null
-            }
-          : null,
-        response: it.response
-          ? {
-              responsePreview: it.response.responsePreview ?? null,
-              messages: Array.isArray(it.response.messages) ? it.response.messages : [],
-              usage: it.response.usage ?? null,
-              parseError: it.response.parseError ?? null,
-              truncated: Boolean(it.response.truncated)
-            }
-          : null
-      };
-    }
-
-    function archivedBodyValue(record) {
-      if (!record || !record.body || typeof record.body !== "object") {
+    function recordBodyText(record) {
+      const body = record?.body;
+      if (!body || typeof body !== "object") {
         return null;
       }
-      const body = record.body;
       if (body.encoding === "utf8") {
-        const text = String(body.text || "");
-        const ct = String(record.contentType || "").toLowerCase();
-        if (ct.includes("application/json")) {
-          try {
-            return JSON.parse(text);
-          } catch {
-            return text;
-          }
-        }
-        return text;
+        return String(body.text || "");
       }
       if (body.encoding === "base64") {
-        return {
-          encoding: "base64",
-          byteLength: body.byteLength || 0,
-          base64: String(body.base64 || "")
-        };
+        return "[binary body: base64 length=" + String((body.base64 || "").length) + ", bytes=" + String(body.byteLength || 0) + "]";
       }
       return null;
     }
 
-    function combineSseResponse(record) {
+    function combineJsonResponseText(rawText) {
+      if (typeof rawText !== "string" || !rawText.trim()) {
+        return rawText;
+      }
+      let body = null;
+      try {
+        body = JSON.parse(rawText);
+      } catch {
+        return rawText;
+      }
+      if (!body || typeof body !== "object") {
+        return rawText;
+      }
+
+      const textParts = [];
+      const toolCalls = [];
+
+      // OpenAI chat.completions
+      if (Array.isArray(body.choices)) {
+        body.choices.forEach((choice) => {
+          const msg = choice?.message;
+          if (!msg || typeof msg !== "object") return;
+          if (typeof msg.content === "string" && msg.content) {
+            textParts.push(msg.content);
+          }
+          if (Array.isArray(msg.tool_calls)) {
+            msg.tool_calls.forEach((tc) => {
+              const fn = tc?.function && typeof tc.function === "object" ? tc.function : null;
+              toolCalls.push({
+                id: tc?.id || tc?.call_id || null,
+                name: fn?.name || tc?.name || "unknown_tool",
+                arguments: String(fn?.arguments || tc?.arguments || "")
+              });
+            });
+          }
+        });
+      }
+
+      // OpenAI responses API
+      if (Array.isArray(body.output)) {
+        body.output.forEach((item) => {
+          if (!item || typeof item !== "object") return;
+          if (typeof item.output_text === "string" && item.output_text) {
+            textParts.push(item.output_text);
+          }
+          if (item.type === "message" && Array.isArray(item.content)) {
+            item.content.forEach((part) => {
+              if (part && typeof part === "object" && typeof part.text === "string" && part.text) {
+                textParts.push(part.text);
+              }
+            });
+          }
+          if (item.type === "function_call" || item.type === "tool_call") {
+            toolCalls.push({
+              id: item.call_id || item.id || null,
+              name: item.name || "unknown_tool",
+              arguments: String(item.arguments || item.input || "")
+            });
+          }
+        });
+      }
+
+      // Anthropic
+      if (Array.isArray(body.content)) {
+        body.content.forEach((block) => {
+          if (!block || typeof block !== "object") return;
+          if (block.type === "text" && typeof block.text === "string" && block.text) {
+            textParts.push(block.text);
+          }
+          if (block.type === "tool_use") {
+            toolCalls.push({
+              id: block.id || null,
+              name: block.name || "unknown_tool",
+              arguments: typeof block.input === "string" ? block.input : JSON.stringify(block.input ?? {})
+            });
+          }
+        });
+      }
+
+      if (textParts.length === 0 && toolCalls.length === 0) {
+        return rawText;
+      }
+      return JSON.stringify({
+        text: textParts.join(""),
+        tool_calls: toolCalls
+      });
+    }
+
+    function combineSseResponseText(record) {
       const events = Array.isArray(record?.sse?.events) ? record.sse.events : [];
       const textParts = [];
       const toolCallsByKey = new Map();
-      let finishReason = null;
-      let usage = null;
+      let fallbackToolSeq = 0;
 
       function getToolCall(key, seed) {
         const curr = toolCallsByKey.get(key) || {
@@ -1523,6 +1158,14 @@ export function renderAdminHtml(): string {
         };
         toolCallsByKey.set(key, next);
         return next;
+      }
+
+      function stableToolKey(base) {
+        if (base && typeof base === "string" && base.trim()) {
+          return base;
+        }
+        fallbackToolSeq += 1;
+        return "unknown_" + fallbackToolSeq;
       }
 
       for (const e of events) {
@@ -1540,7 +1183,7 @@ export function renderAdminHtml(): string {
           continue;
         }
 
-        // Anthropic text deltas.
+        // Anthropic text deltas
         if (typeof obj.delta === "string" && obj.delta) {
           textParts.push(obj.delta);
         }
@@ -1559,23 +1202,19 @@ export function renderAdminHtml(): string {
           textParts.push(obj.delta.text);
         }
 
-        // OpenAI streamed text deltas.
+        // OpenAI text + tool_calls
         if (Array.isArray(obj.choices)) {
           for (const choice of obj.choices) {
             if (!choice || typeof choice !== "object") continue;
-            if (typeof choice.finish_reason === "string" && choice.finish_reason) {
-              finishReason = choice.finish_reason;
-            }
             const delta = choice.delta && typeof choice.delta === "object" ? choice.delta : null;
             if (delta && typeof delta.content === "string") {
               textParts.push(delta.content);
             }
-            // OpenAI tool call argument chunk assembly.
             const tcs = delta && Array.isArray(delta.tool_calls) ? delta.tool_calls : [];
             for (const tc of tcs) {
               if (!tc || typeof tc !== "object") continue;
               const index = Number.isInteger(tc.index) ? tc.index : -1;
-              const key = String(index >= 0 ? index : tc.id || tc.call_id || Math.random());
+              const key = stableToolKey(index >= 0 ? ("index_" + index) : (tc.id || tc.call_id || ""));
               const fn = tc.function && typeof tc.function === "object" ? tc.function : null;
               const item = getToolCall(key, {
                 id: tc.id || tc.call_id || null,
@@ -1590,11 +1229,13 @@ export function renderAdminHtml(): string {
           }
         }
 
-        // Anthropic tool_use argument chunk assembly.
+        // Anthropic tool_use + input_json_delta
         if (obj.type === "content_block_start" && obj.content_block && typeof obj.content_block === "object") {
           const cb = obj.content_block;
           if (cb.type === "tool_use") {
-            const key = String(obj.index ?? cb.id ?? cb.name ?? Math.random());
+            const key = stableToolKey(
+              cb.id ? String(cb.id) : (Number.isInteger(obj.index) ? ("index_" + String(obj.index)) : (cb.name ? String(cb.name) : ""))
+            );
             const item = getToolCall(key, { id: cb.id || null, name: cb.name || "unknown_tool" });
             if (cb.input && typeof cb.input === "object") {
               item.arguments += JSON.stringify(cb.input);
@@ -1603,7 +1244,7 @@ export function renderAdminHtml(): string {
           }
         }
         if (obj.type === "content_block_delta" && obj.delta && typeof obj.delta === "object" && obj.delta.type === "input_json_delta") {
-          const key = String(obj.index ?? "unknown");
+          const key = stableToolKey(Number.isInteger(obj.index) ? ("index_" + String(obj.index)) : "");
           const item = getToolCall(key, {});
           const partial = String(obj.delta.partial_json || "");
           if (partial) {
@@ -1611,50 +1252,38 @@ export function renderAdminHtml(): string {
           }
           toolCallsByKey.set(key, item);
         }
-
-        if (typeof obj.stop_reason === "string" && obj.stop_reason) {
-          finishReason = obj.stop_reason;
-        }
-        if (obj.usage && typeof obj.usage === "object") {
-          usage = obj.usage;
-        }
       }
 
-      return {
-        type: "sse_combined",
-        eventCount: Number(record?.sse?.eventCount || events.length || 0),
-        doneSeen: Boolean(record?.sse?.doneSeen),
-        finishReason: finishReason || null,
-        usage: usage || null,
+      const toolCallParts = Array.from(toolCallsByKey.values()).map((tc) => {
+        return {
+          id: tc.id || null,
+          name: tc.name || "unknown_tool",
+          arguments: String(tc.arguments || "")
+        };
+      });
+
+      return JSON.stringify({
         text: textParts.join(""),
-        toolCalls: Array.from(toolCallsByKey.values())
-      };
+        tool_calls: toolCallParts
+      });
     }
 
-    function responseBodyValue(record) {
-      if (!record || !record.body || typeof record.body !== "object") {
-        return null;
-      }
-      if (record.isSse && record.sse && typeof record.sse === "object") {
-        return combineSseResponse(record);
-      }
-      return archivedBodyValue(record);
-    }
-
-    function toRawArchiveJson(it, detail) {
+    function toRawArchiveJson(detail, fallbackRequestId) {
+      const req = detail?.request || null;
+      const res = detail?.response || null;
+      const responseText = (res?.isSse && res?.sse && typeof res.sse === "object")
+        ? combineSseResponseText(res)
+        : combineJsonResponseText(recordBodyText(res));
       return {
-        requestId: it.requestId || null,
-        provider: it.provider || null,
-        apiFormat: it.apiFormat || null,
-        method: it.method || null,
-        path: it.path || null,
-        statusCode: it.statusCode ?? null,
-        request: archivedBodyValue(detail?.request || null),
-        response: responseBodyValue(detail?.response || null)
+        requestId: req?.requestId || res?.requestId || fallbackRequestId || null,
+        statusCode: typeof res?.statusCode === "number" ? res.statusCode : null,
+        request: recordBodyText(req),
+        response: responseText
       };
     }
 
     function renderJsonModalPayload(payload) {
+      currentJsonValue = payload;
       currentJsonRawText = JSON.stringify(payload, null, 2);
       currentJsonText = currentJsonRawText;
       byId("jsonContent").innerHTML = renderJsonTree(payload);
@@ -1687,6 +1316,48 @@ export function renderAdminHtml(): string {
       return '<span class="json-muted">' + escHtml(String(value)) + "</span>";
     }
 
+    function tryParseEmbeddedJsonString(value) {
+      if (typeof value !== "string") return null;
+      let s = value.trim();
+      if (!s) return null;
+
+      // Support quoted JSON strings, e.g. "\"{\\\"a\\\":1}\"".
+      for (let i = 0; i < 4; i += 1) {
+        const looksLikeJson =
+          (s.startsWith("{") && s.endsWith("}")) ||
+          (s.startsWith("[") && s.endsWith("]"));
+        if (looksLikeJson) {
+          try {
+            const parsed = JSON.parse(s);
+            if (parsed && typeof parsed === "object") {
+              return parsed;
+            }
+          } catch {
+            return null;
+          }
+          return null;
+        }
+
+        const quoted = s.length >= 2 && s.startsWith('"') && s.endsWith('"');
+        if (!quoted) {
+          return null;
+        }
+        try {
+          const unwrapped = JSON.parse(s);
+          if (typeof unwrapped !== "string") {
+            return null;
+          }
+          s = unwrapped.trim();
+          if (!s) {
+            return null;
+          }
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    }
+
     function renderJsonNode(key, value, path, depth, isLast, fromArray) {
       const comma = isLast ? "" : ",";
       const keyPrefix = key === null
@@ -1696,6 +1367,11 @@ export function renderAdminHtml(): string {
           : '<span class="json-key">"' + escHtml(String(key)) + '"</span>: ';
       const isComposite = value && typeof value === "object";
       if (!isComposite) {
+        const embedded = tryParseEmbeddedJsonString(value);
+        if (embedded) {
+          // Friendly display: parseable JSON string is rendered in-place.
+          return renderJsonNode(key, embedded, path + ".__parsed", depth, isLast, fromArray);
+        }
         return '<div class="json-line" style="' + jsonIndent(depth) + '">' +
           keyPrefix + formatJsonPrimitive(value) + comma +
         "</div>";
@@ -1749,8 +1425,8 @@ export function renderAdminHtml(): string {
             jsonNodeCollapsed.delete(path);
           }
           try {
-            const parsed = JSON.parse(currentJsonRawText || "{}");
-            byId("jsonContent").innerHTML = renderJsonTree(parsed);
+            const value = currentJsonValue === null ? JSON.parse(currentJsonRawText || "{}") : currentJsonValue;
+            byId("jsonContent").innerHTML = renderJsonTree(value);
             bindJsonTreeEvents();
           } catch {
             byId("jsonContent").textContent = currentJsonText;
@@ -1769,11 +1445,7 @@ export function renderAdminHtml(): string {
       jsonNodeCollapsed.clear();
       renderJsonModalPayload({
         requestId,
-        provider: item.provider || null,
-        apiFormat: item.apiFormat || null,
-        method: item.method || null,
-        path: item.path || null,
-        statusCode: item.statusCode ?? null,
+        statusCode: null,
         loading: "loading archived request/response..."
       });
       setJsonCollapsed(false);
@@ -1783,6 +1455,11 @@ export function renderAdminHtml(): string {
         const sessionParam = item.sessionId ? "&sessionId=" + encodeURIComponent(item.sessionId) : "";
         const r = await fetch("/__admin/api/logs/detail?requestId=" + encodeURIComponent(requestId) + sessionParam);
         if (!r.ok) {
+          renderJsonModalPayload({
+            requestId,
+            statusCode: null,
+            error: "failed to load archived detail"
+          });
           return;
         }
         const body = await r.json();
@@ -1791,13 +1468,20 @@ export function renderAdminHtml(): string {
         }
         const detail = body.detail || null;
         if (detail && (detail.request || detail.response)) {
-          renderJsonModalPayload(toRawArchiveJson(item, detail));
+          renderJsonModalPayload(toRawArchiveJson(detail, requestId));
           return;
         }
-        renderJsonModalPayload(toAgentJson(item));
+        renderJsonModalPayload({
+          requestId,
+          statusCode: null,
+          error: "archived detail not found"
+        });
       } catch {
-        // Fallback to summary payload when archived detail loading fails.
-        renderJsonModalPayload(toAgentJson(item));
+        renderJsonModalPayload({
+          requestId,
+          statusCode: null,
+          error: "failed to load archived detail"
+        });
       }
     }
 
@@ -1816,6 +1500,7 @@ export function renderAdminHtml(): string {
 
     function closeJsonModal() {
       currentJsonLogId = "";
+      currentJsonValue = null;
       byId("jsonModal").classList.remove("open");
     }
 
@@ -1948,21 +1633,6 @@ export function renderAdminHtml(): string {
       if (autoRefresh) {
         connectLogStream();
       }
-    });
-    byId("sessionFilter").addEventListener("change", () => {
-      renderLogs(latestAllLogs);
-    });
-    byId("timeFrom").addEventListener("change", () => {
-      renderLogs(latestAllLogs);
-    });
-    byId("timeTo").addEventListener("change", () => {
-      renderLogs(latestAllLogs);
-    });
-    byId("clearFilterBtn").addEventListener("click", () => {
-      byId("sessionFilter").value = "";
-      byId("timeFrom").value = "";
-      byId("timeTo").value = "";
-      renderLogs(latestAllLogs);
     });
     byId("closeJsonBtn").addEventListener("click", closeJsonModal);
     byId("jsonModal").addEventListener("click", (e) => {
