@@ -1,76 +1,93 @@
 # AgentLens
 
-Transparent local proxy for intercepting LLM API traffic while preserving request/response semantics and SSE streaming behavior.
+> [中文文档](./README-zh.md)
+
+AgentLens is a local transparent proxy for observing and debugging AI requests.
+
+It does three things:
+- Forwards requests to your configured upstream model services (OpenAI / Anthropic / compatible gateways)
+- Logs request / response (raw archives can be toggled in Admin)
+- Provides a local admin page for viewing logs and editing config
 
 ## Quick Start
 
-1. Install deps:
+Requires: Node.js >= 20
 
 ```bash
 npm install
-```
-
-2. Edit config if needed:
-
-```bash
-cp .env.example .env
-```
-
-3. Build and run:
-
-```bash
 npm run build
 npm start
 ```
 
 Default listener: `http://127.0.0.1:5290`
 
-Admin UI:
-
-- `http://127.0.0.1:5290/__admin`
-- API: `GET/PUT /__admin/api/config`
-- Logs API: `GET /__admin/api/logs?limit=60`
-- Logs Stream (SSE): `GET /__admin/api/logs/stream?limit=60`
-- 支持按请求格式自动路由：
-  - Anthropic (`anthropic-version` 或 `/v1/messages`)
-  - OpenAI (`/v1/responses`、`/v1/chat/completions` 等)
-
-## Config
-
-Default config file: `config/default.yaml`.
-
-Use `AGENTLENS_CONFIG` to point to another config path.
-
-To use an Anthropic-compatible relay, set:
-
-- `ANTHROPIC_BASE_URL`
-- `API_TIMEOUT_MS` (optional)
-
-Then call AgentLens with header:
+Point your client's Base URL to AgentLens, for example:
 
 ```bash
-x-target-provider: anthropic_relay
+export ANTHROPIC_BASE_URL=http://127.0.0.1:5290
 ```
 
-`anthropic_relay` uses `passthrough` auth by default (for clients that already send auth headers).
+## Admin UI (Recommended)
+
+After starting, open: `http://127.0.0.1:5290/__admin`
+
+Configure everything from the page:
+- Add/edit Providers (`baseURL`, `hostHeader`, auth mode)
+- Set the default routing Provider
+- Changes take effect immediately on save
+
+No need to manually edit config files — saving from the UI writes to local config directly.
+
+## Scheduled Loop (New)
+
+After startup, open: `http://127.0.0.1:5290/__loop`
+
+This is a standalone feature and does not change existing proxy behavior. It supports:
+- Creating recurring loop tasks (interval, timeout, working directory or file path)
+- Runner presets: `Codex` (default) / `Claude Code` / `Custom`
+- Run now, enable/disable, delete
+- Test-run before saving
+- Path check (directory/file); file path automatically runs from its parent directory
+- Codex template library (one-click common task presets)
+- Favorite paths (saved in browser local storage)
+- Reuse last successful test configuration (saved in browser local storage)
+- Task edit mode and clone-to-form for quick creation
+- Task list search filter (by name/runner)
+- Multi-task parallel execution (configurable global max concurrency with queueing)
+- Single-task multi-stage workflow (one line per stage, e.g. "dev -> code review")
+- Step-to-step context handoff (toggleable; passes key output from previous stage)
+- Workflow shared session (enabled by default; reuses one Codex session across steps/rounds of the same task)
+- Codex access mode switch (standard / Full Access)
+- Per-step runner/command override (format: `step|runner|command`)
+- Per-step cwd/file-path override from frontend visual editor (directory runs directly; file runs from parent directory)
+- Per-step timeout and failure policy override (format: `step|runner|command|timeoutSec|continue/stop`)
+- Visual workflow step editor (add/remove/reorder/enable, with two-way sync to text)
+- Visual editor supports advanced-field toggle (simple/full mode)
+- Built-in step template library (dev/review/summary/test) with one-click insert
+- Text format with prompt append + enable flag: `step|runner|command|promptAppend|timeoutSec|continue/stop|on/off`
+- Viewing recent run logs (stdout/stderr/status)
+
+Notes:
+- Tasks execute local shell commands (for example `claude -p "{prompt}"`, `codex exec "{prompt}"`)
+- Full Access bypasses sandbox/approvals; enable only in trusted environments
+- CLI arguments vary by local version; adjust with custom command if needed
+- Task config is persisted at `config/loop-tasks.json`
+
+## Auth Rules (inject mode)
+
+When a Provider uses `inject`:
+- If the local env var (specified by Env Key) has a value: inject it into the designated Header
+- If the local env var is empty: pass through the downstream client's Header as-is
+
+In short: **local env takes priority; falls back to passthrough**.
 
 ## Logging
 
-Request and response logs are appended to one JSONL file at `./logs/requests.jsonl`.
-Each request uses the same `requestId` for two records (`type=request` and `type=response`).
+- View request list and JSON details from the admin page
+- `request` displays the raw `body.text` from the request
+- `response` shows the merged result after display-layer substitution (original data unchanged)
+- Raw request/response archives are saved to local logs only when `archiveRequests` is enabled
 
-Includes:
+## Local Use Only
 
-- `sessionId`, `provider`, `apiFormat`, `model`, `stream`
-- request side: `systemPromptPreview`, `messages`, `tools`
-- response side: `responsePreview`, `usage`, `finishReason`, `statusCode`
-- `parseError` when JSON parse fails
-- `truncated` only when you explicitly configure a positive response capture limit
-
-日志不会保存完整 HTTP headers（避免泄漏鉴权信息），但会保存请求/响应原文归档（`logs/requests.archive/...`）。
-`logging.maxArchiveBodyBytes <= 0` 表示响应原文不截断（默认即全量）。
-
-## Admin UI Notes
-
-- Save in UI writes back to your config YAML and updates runtime config immediately.
-- Admin endpoints are currently unauthenticated and intended for local-only usage.
+The admin page has no authentication by default. Use only in local environments.

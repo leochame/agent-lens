@@ -68,13 +68,21 @@ function detectByFormat(config: AppConfig, req: IncomingMessage): string | null 
 
   const openaiPaths = [
     "/v1/responses",
+    "/responses",
     "/v1/chat/completions",
+    "/chat/completions",
     "/v1/completions",
+    "/completions",
     "/v1/embeddings",
+    "/embeddings",
     "/v1/images",
+    "/images",
     "/v1/audio",
+    "/audio",
     "/v1/moderations",
-    "/v1/fine_tuning"
+    "/moderations",
+    "/v1/fine_tuning",
+    "/fine_tuning"
   ];
   if (openaiPaths.some((p) => path.startsWith(p)) && openaiProvider && config.providers[openaiProvider]) {
     return openaiProvider;

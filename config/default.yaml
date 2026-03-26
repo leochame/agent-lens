@@ -2,21 +2,33 @@ listen:
   host: 127.0.0.1
   port: 5290
 routing:
-  defaultProvider: cc
+  defaultProvider: 中转站
   byHeader: x-target-provider
   byPathPrefix: {}
   autoDetectProviderByFormat: true
   formatProviders:
-    anthropic: cc
+    anthropic: 中转站
+    openai: provider_2
 providers:
-  cc:
+  中转站:
     baseURL: https://ruoli.dev/v1
     hostHeader: ruoli.dev
-    authMode: passthrough
+    authMode:
+      type: inject
+      header: x-api-key
+      value: sk-K37VK2NWCTPCUMut6JemgfVj4XKITJ74WmvJ4n4knWGz6EtC
+    pathRewrite: []
+  provider_2:
+    baseURL: https://ai.dooo.ng/v1
+    authMode:
+      type: inject
+      header: authorization
+      value: sk-43d53f98a21060f75612ac6f280dd8ee79fdd7afaf10be6c9cafbb6fb8b506db
+      valuePrefix: "Bearer "
     pathRewrite: []
 logging:
   filePath: ./logs/requests.jsonl
-  # <= 0 means unlimited raw response capture for archive
+  archiveRequests: false
   maxArchiveBodyBytes: 0
   redactHeaders:
     - authorization

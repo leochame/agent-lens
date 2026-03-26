@@ -1,9 +1,9 @@
 import { mkdir, appendFile, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, join, parse } from "node:path";
 import { IncomingHttpHeaders } from "node:http";
 import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
 import { LoggingConfig } from "../provider-router/types";
-import { archiveRecordFilePath } from "./archive-path";
+import { ApiFormat, archiveRecordFilePath } from "./archive-path";
 
 export type RequestLogPayload = {
   ts: string;
@@ -287,20 +287,30 @@ function decodeResponseBody(rawBody: Buffer, headers: IncomingHttpHeaders): Buff
   return rawBody;
 }
 
-function detectApiFormat(path: string, headers: IncomingHttpHeaders): "anthropic" | "openai" | "unknown" {
+function detectApiFormat(path: string, headers: IncomingHttpHeaders): ApiFormat {
   const p = (path || "").split("?")[0];
   if (headers["anthropic-version"] || p === "/v1/messages" || p === "/v1/complete") {
     return "anthropic";
   }
   if (
     p.startsWith("/v1/responses") ||
+    p.startsWith("/responses") ||
     p.startsWith("/v1/chat/completions") ||
+    p.startsWith("/chat/completions") ||
     p.startsWith("/v1/completions") ||
+    p.startsWith("/completions") ||
     p.startsWith("/v1/embeddings")
+    || p.startsWith("/embeddings")
   ) {
     return "openai";
   }
   return "unknown";
+}
+
+function formatLogFilePath(filePath: string, apiFormat: ApiFormat): string {
+  const parsed = parse(filePath);
+  const ext = parsed.ext || ".jsonl";
+  return join(parsed.dir, `${parsed.name}.${apiFormat}${ext}`);
 }
 
 function getSessionId(headers: IncomingHttpHeaders): string | null {
@@ -1011,18 +1021,23 @@ export class LoggerService {
   private readonly config: LoggingConfig;
   private writeChain: Promise<void> = Promise.resolve();
   private readonly requestSessionMap = new Map<string, string | null>();
+  private static readonly MAX_REQUEST_SESSION_ENTRIES = 5000;
 
   public constructor(config: LoggingConfig) {
     this.config = config;
   }
 
   public logRequest(payload: RequestLogPayload): void {
+    if (!this.config.archiveRequests) {
+      return;
+    }
     this.enqueue(async () => {
       const parsed = parseJsonIfPossible(payload.rawBody, payload.contentType);
       const apiFormat = detectApiFormat(payload.path, payload.headers);
       const summary = summarizeRequest(apiFormat, parsed.jsonBody);
       const sessionId = getSessionId(payload.headers);
       this.requestSessionMap.set(payload.requestId, sessionId);
+      this.pruneRequestSessionMap();
       const record: LogRecord = {
         type: "request",
         ts: payload.ts,
@@ -1037,6 +1052,7 @@ export class LoggerService {
         systemPromptPreview: summary.systemPromptPreview,
         messages: summary.messages,
         tools: summary.tools,
+        toolCalls: summary.toolCalls,
         parseError: parsed.parseError
       };
       await this.appendRecord(record);
@@ -1045,6 +1061,10 @@ export class LoggerService {
   }
 
   public logResponse(payload: ResponseLogPayload): void {
+    if (!this.config.archiveRequests) {
+      this.requestSessionMap.delete(payload.requestId);
+      return;
+    }
     this.enqueue(async () => {
       const decodedBody = decodeResponseBody(payload.rawBody, payload.headers);
       const parsed = parseJsonIfPossible(decodedBody, payload.contentType);
@@ -1064,6 +1084,7 @@ export class LoggerService {
         stream: null,
         responsePreview: summary.responsePreview,
         responseMessages: summary.responseMessages,
+        toolCalls: summary.toolCalls,
         usage: summary.usage,
         finishReason: summary.finishReason,
         statusCode: payload.statusCode,
@@ -1087,13 +1108,33 @@ export class LoggerService {
     });
   }
 
+  private pruneRequestSessionMap(): void {
+    while (this.requestSessionMap.size > LoggerService.MAX_REQUEST_SESSION_ENTRIES) {
+      const oldestKey = this.requestSessionMap.keys().next().value;
+      if (!oldestKey) {
+        break;
+      }
+      this.requestSessionMap.delete(oldestKey);
+    }
+  }
+
   private async appendRecord(record: LogRecord): Promise<void> {
     await mkdir(dirname(this.config.filePath), { recursive: true });
     await appendFile(this.config.filePath, `${JSON.stringify(record)}\n`, "utf8");
+    await appendFile(formatLogFilePath(this.config.filePath, record.apiFormat), `${JSON.stringify(record)}\n`, "utf8");
   }
 
   private async appendArchiveRecord(record: LogRecord, rawBody: Buffer, contentType?: string): Promise<void> {
-    const detailPath = archiveRecordFilePath(this.config.filePath, record.sessionId ?? null, record.requestId, record.type);
+    if (!this.config.archiveRequests) {
+      return;
+    }
+    const detailPath = archiveRecordFilePath(
+      this.config.filePath,
+      record.sessionId ?? null,
+      record.requestId,
+      record.type,
+      record.apiFormat
+    );
     const body = toArchivedBody(rawBody, contentType);
     const isSse = (contentType ?? "").toLowerCase().includes("text/event-stream");
     const payload: ArchivedDetailRecord = {

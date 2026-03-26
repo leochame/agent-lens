@@ -1,0 +1,50 @@
+{
+  "tasks": [
+    {
+      "id": "3826ec9f-3243-4492-9caa-228d08dff771",
+      "name": "代码开发",
+      "runner": "custom",
+      "prompt": "只修改当前仓库，代码结构尽可能精简",
+      "workflow": [],
+      "workflowSteps": [
+        {
+          "name": "进行全量 Code Review，找出代码存在错误的地方",
+          "continueOnError": false,
+          "enabled": true
+        },
+        {
+          "name": "进行修复",
+          "continueOnError": false,
+          "enabled": true
+        },
+        {
+          "name": "继续",
+          "continueOnError": false,
+          "enabled": true
+        },
+        {
+          "name": "对代码进行增强，记忆系统继续发挥进行增强设计",
+          "continueOnError": false,
+          "enabled": true
+        },
+        {
+          "name": "继续",
+          "continueOnError": false,
+          "enabled": true
+        }
+      ],
+      "workflowCarryContext": true,
+      "workflowLoopFromStart": true,
+      "workflowSharedSession": true,
+      "workflowFullAccess": true,
+      "intervalSec": 300,
+      "timeoutSec": 300,
+      "enabled": true,
+      "cwd": "/Users/leocham/Documents/code/memory-system",
+      "command": "codex exec \"{prompt}\"",
+      "createdAt": "2026-03-26T02:54:04.089Z",
+      "updatedAt": "2026-03-26T04:18:44.618Z",
+      "lastRunAt": "2026-03-26T04:18:44.618Z"
+    }
+  ]
+}

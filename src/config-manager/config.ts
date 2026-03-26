@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { parse, stringify } from "yaml";
 import { AppConfig } from "../provider-router/types";
 import { validateConfig } from "./schema";
@@ -74,16 +74,32 @@ export function loadConfig(): AppConfig {
 
   const timeoutFromEnv = process.env.API_TIMEOUT_MS;
   const timeoutFromConfig = resolved.requestTimeoutMs;
-  const normalizedTimeout =
+  const timeoutFromConfigNumber =
     typeof timeoutFromConfig === "number"
       ? timeoutFromConfig
       : typeof timeoutFromConfig === "string"
         ? Number(timeoutFromConfig)
-        : timeoutFromEnv
-          ? Number(timeoutFromEnv)
-          : 120000;
+        : undefined;
+  const timeoutFromEnvNumber = timeoutFromEnv ? Number(timeoutFromEnv) : undefined;
+  const normalizedTimeout = Number.isFinite(timeoutFromConfigNumber)
+    ? timeoutFromConfigNumber
+    : Number.isFinite(timeoutFromEnvNumber)
+      ? timeoutFromEnvNumber
+      : 120000;
 
   resolved.requestTimeoutMs = Number.isFinite(normalizedTimeout) ? normalizedTimeout : 120000;
+
+  const logging = (resolved.logging && typeof resolved.logging === "object"
+    ? resolved.logging
+    : {}) as AppConfig["logging"];
+  resolved.logging = logging;
+  const archiveFromConfig = logging.archiveRequests as unknown;
+  logging.archiveRequests =
+    typeof archiveFromConfig === "boolean"
+      ? archiveFromConfig
+      : typeof archiveFromConfig === "string"
+        ? archiveFromConfig.toLowerCase() === "true"
+        : false;
 
   return validateConfig(resolved);
 }
@@ -91,5 +107,6 @@ export function loadConfig(): AppConfig {
 export async function saveConfig(configPath: string, config: AppConfig): Promise<void> {
   const valid = validateConfig(config);
   const yaml = stringify(valid);
+  await mkdir(dirname(configPath), { recursive: true });
   await writeFile(configPath, yaml, "utf8");
 }

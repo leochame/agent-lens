@@ -3,7 +3,8 @@ export type AuthMode =
   | {
       type: "inject";
       header: string;
-      valueFromEnv: string;
+      value?: string;
+      valueFromEnv?: string;
       valuePrefix?: string;
     };
 
@@ -41,6 +42,7 @@ export type LoggingConfig = {
   redactBodyKeys?: string[];
   maxBodyBytes?: number;
   maxArchiveBodyBytes?: number;
+  archiveRequests?: boolean;
 };
 
 export type AppConfig = {

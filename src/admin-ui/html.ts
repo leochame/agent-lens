@@ -1,4 +1,8 @@
-export function renderAdminHtml(): string {
+export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): string {
+  const modeTitle = view === "openai" ? "OpenAI" : view === "anthropic" ? "Anthropic" : "All";
+  const navAllClass = view === "all" ? "entry-link active" : "entry-link";
+  const navOpenaiClass = view === "openai" ? "entry-link active" : "entry-link";
+  const navAnthropicClass = view === "anthropic" ? "entry-link active" : "entry-link";
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -183,6 +187,33 @@ export function renderAdminHtml(): string {
       margin-top: 8px;
       font-size: 12px;
       color: var(--muted);
+    }
+    .entry-nav {
+      margin-top: 12px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .entry-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 96px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid #c8d8f7;
+      background: #f1f6ff;
+      color: #20488f;
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1;
+      text-decoration: none;
+    }
+    .entry-link.active {
+      background: #0f67ff;
+      border-color: #0f67ff;
+      color: #fff;
     }
     .error-box {
       margin-top: 10px;
@@ -611,8 +642,13 @@ export function renderAdminHtml(): string {
     </div>
 
     <div class="card">
-      <h1>AgentLens Admin</h1>
+      <h1>AgentLens Admin (${modeTitle})</h1>
       <p>这里配置的是“下游客户端 -> AgentLens -> 上游模型服务”的路由。点击保存后会写入本地配置文件并立即生效。</p>
+      <div class="entry-nav" aria-label="页面入口">
+        <a class="${navAllClass}" href="/__admin">All</a>
+        <a class="${navOpenaiClass}" href="/__admin/openai">OpenAI</a>
+        <a class="${navAnthropicClass}" href="/__admin/anthropic">Anthropic</a>
+      </div>
     </div>
 
     <div class="card">
@@ -625,6 +661,12 @@ export function renderAdminHtml(): string {
         <label class="field">Listen Port<input id="listenPort" type="number" min="1" max="65535" /></label>
         <label class="field">Default Provider<select id="defaultProvider"></select></label>
         <label class="field">Timeout (ms)<input id="timeoutMs" type="number" min="1" /></label>
+        <label class="field">请求归档
+          <select id="archiveRequests">
+            <option value="false">关闭</option>
+            <option value="true">开启</option>
+          </select>
+        </label>
       </div>
       <div class="grid">
         <label class="field">Route Header Key<input id="routeHeader" placeholder="x-target-provider" /></label>
@@ -638,6 +680,8 @@ export function renderAdminHtml(): string {
         <label class="field">OpenAI Provider<select id="openaiProvider"></select></label>
       </div>
       <div class="hint">开启自动识别后，会根据请求路径/头自动分流到 Anthropic 或 OpenAI 对应上游。</div>
+      <div class="hint">使用不同配置时：先在“上游列表”添加两个上游（各自 URL/密钥），再分别在这里选择 Anthropic Provider 与 OpenAI Provider。</div>
+      <div class="hint">OpenAI Provider 会自动使用 Authorization: Bearer；Anthropic Provider 会自动使用 x-api-key。</div>
     </div>
 
     <div class="card">
@@ -646,7 +690,7 @@ export function renderAdminHtml(): string {
         <button class="ghost" id="addProvider">添加上游</button>
       </div>
       <div class="provider-list" id="providersList"></div>
-      <div class="hint">passthrough 会透传下游鉴权头；inject 由 AgentLens 从环境变量注入鉴权。</div>
+      <div class="hint">每个上游仅支持修改 Base URL 与密钥；密钥为空时透传下游请求头。</div>
       <div id="validationErrors" class="error-box"></div>
     </div>
 
@@ -656,13 +700,15 @@ export function renderAdminHtml(): string {
 
     <div class="card">
       <div class="section-title">
-        <h2>Request / Response Raw Logs</h2>
+        <h2>${modeTitle} Request / Response Raw Logs</h2>
         <span id="logState" class="badge warn dot">连接中</span>
       </div>
       <div class="log-toolbar">
         <div class="actions">
           <button class="ghost" id="logAutoBtn">自动刷新：开</button>
           <button class="ghost" id="logRefreshBtn">立即刷新</button>
+          <button class="danger" id="logCleanupFailedBtn">清理请求失败文档</button>
+          <button class="danger" id="logCleanupAllBtn">清理所有文档</button>
         </div>
         <label class="field" style="min-width:140px;">
           展示条数
@@ -694,6 +740,14 @@ export function renderAdminHtml(): string {
   </div>
 
   <script>
+    const API_FORMAT_FILTER = "${view}";
+
+    function withApiFormat(url) {
+      if (!API_FORMAT_FILTER || API_FORMAT_FILTER === "all") return url;
+      const sep = url.includes("?") ? "&" : "?";
+      return url + sep + "apiFormat=" + encodeURIComponent(API_FORMAT_FILTER);
+    }
+
     let state = null;
     let dirty = false;
     let saving = false;
@@ -706,6 +760,7 @@ export function renderAdminHtml(): string {
     let currentJsonValue = null;
     let currentJsonLogId = "";
     let jsonCollapsed = false;
+    let cleaningLogs = false;
     const jsonNodeExpanded = new Set();
     const jsonNodeCollapsed = new Set();
 
@@ -764,37 +819,24 @@ export function renderAdminHtml(): string {
     }
 
     function providerCard(name, p) {
-      const mode = typeof p.authMode === "string" ? p.authMode : (p.authMode?.type || "passthrough");
-      const injectHeader = typeof p.authMode === "object" ? (p.authMode.header || "") : "";
-      const injectEnv = typeof p.authMode === "object" ? (p.authMode.valueFromEnv || "") : "";
-      const injectPrefix = typeof p.authMode === "object" ? (p.authMode.valuePrefix || "") : "";
-      const disabled = mode !== "inject" ? "disabled" : "";
+      const keyValue = typeof p.authMode === "object"
+        ? (p.authMode.value || p.authMode.valueFromEnv || "")
+        : "";
       return '<div class="provider-item" data-name="' + esc(name) + '">' +
         '<div class="provider-head">' +
         '<strong>' + esc(name) + '</strong>' +
         '<button class="danger" data-action="remove">删除</button>' +
         '</div>' +
         '<div class="provider-grid">' +
-        '<label class="field">Name<input data-k="name" value="' + esc(name) + '" /></label>' +
         '<label class="field wide">Base URL<input data-k="baseURL" value="' + esc(p.baseURL || "") + '" placeholder="https://api.example.com" /></label>' +
-        '<label class="field">Host Header<input data-k="hostHeader" value="' + esc(p.hostHeader || "") + '" placeholder="api.example.com" /></label>' +
-        '<label class="field">Auth<select data-k="authType">' +
-          '<option value="passthrough"' + (mode === "passthrough" ? " selected" : "") + '>passthrough</option>' +
-          '<option value="inject"' + (mode === "inject" ? " selected" : "") + '>inject</option>' +
-        '</select></label>' +
-        '<label class="field">Inject Header<input data-k="injectHeader" value="' + esc(injectHeader) + '" ' + disabled + ' placeholder="authorization" /></label>' +
-        '<label class="field">Env Key<input data-k="injectEnv" value="' + esc(injectEnv) + '" ' + disabled + ' placeholder="OPENAI_API_KEY" /></label>' +
-        '<label class="field">Prefix<input data-k="injectPrefix" value="' + esc(injectPrefix) + '" ' + disabled + ' placeholder="Bearer " /></label>' +
+        '<label class="field">密钥<input data-k="apiKey" value="' + esc(keyValue) + '" placeholder="sk-..." /></label>' +
         '</div></div>';
     }
 
     function getProviderNamesFromDom() {
       const cards = Array.from(document.querySelectorAll(".provider-item"));
       const names = cards
-        .map((card) => {
-          const input = card.querySelector('[data-k="name"]');
-          return input ? input.value.trim() : "";
-        })
+        .map((card) => (card.getAttribute("data-name") || "").trim())
         .filter(Boolean);
       return Array.from(new Set(names));
     }
@@ -819,33 +861,15 @@ export function renderAdminHtml(): string {
     }
 
     function wireProviderItem(item) {
-      const authSel = item.querySelector('[data-k="authType"]');
-      if (authSel) {
-        authSel.addEventListener("change", (e) => {
-          const inject = item.querySelectorAll('[data-k="injectHeader"], [data-k="injectEnv"], [data-k="injectPrefix"]');
-          const on = e.target.value === "inject";
-          inject.forEach((node) => node.disabled = !on);
-          setDirty(true);
-        });
-      }
-
       const removeBtn = item.querySelector('button[data-action="remove"]');
       if (removeBtn) {
         removeBtn.addEventListener("click", () => {
-          const nameInput = item.querySelector('[data-k="name"]');
-          const name = (nameInput && nameInput.value) || item.getAttribute("data-name");
+          const name = item.getAttribute("data-name");
           if (!confirm('确认删除上游 "' + name + '" ?')) return;
           item.remove();
           rebuildProviderSelectors();
           setDirty(true);
           setMessage("已删除一条上游配置，记得保存。", "muted");
-        });
-      }
-
-      const nameInput = item.querySelector('[data-k="name"]');
-      if (nameInput) {
-        nameInput.addEventListener("input", () => {
-          rebuildProviderSelectors();
         });
       }
     }
@@ -876,15 +900,25 @@ export function renderAdminHtml(): string {
       const names = Object.keys(next.providers || {});
       if (names.length === 0) errors.push("至少需要一个 Provider。");
       if (!next.providers[next.routing.defaultProvider]) errors.push("Default Provider 必须存在于 Provider 列表。");
+      if (next.routing.autoDetectProviderByFormat) {
+        if (!next.routing.formatProviders?.anthropic) {
+          errors.push("已开启自动识别时，必须选择 Anthropic Provider。");
+        }
+        if (!next.routing.formatProviders?.openai) {
+          errors.push("已开启自动识别时，必须选择 OpenAI Provider。");
+        }
+        if (next.routing.formatProviders?.anthropic && !next.providers[next.routing.formatProviders.anthropic]) {
+          errors.push("Anthropic Provider 必须存在于 Provider 列表。");
+        }
+        if (next.routing.formatProviders?.openai && !next.providers[next.routing.formatProviders.openai]) {
+          errors.push("OpenAI Provider 必须存在于 Provider 列表。");
+        }
+      }
 
       names.forEach((n) => {
         const p = next.providers[n];
         if (!n.trim()) errors.push("Provider 名称不能为空。");
         if (!/^https?:\\/\\//i.test(p.baseURL || "")) errors.push('Provider "' + n + '" 的 Base URL 必须以 http:// 或 https:// 开头。');
-        if (p.authMode && typeof p.authMode === "object" && p.authMode.type === "inject") {
-          if (!p.authMode.header) errors.push('Provider "' + n + '" inject 模式需要 Inject Header。');
-          if (!p.authMode.valueFromEnv) errors.push('Provider "' + n + '" inject 模式需要 Env Key。');
-        }
       });
 
       const box = byId("validationErrors");
@@ -903,6 +937,7 @@ export function renderAdminHtml(): string {
       next.listen.host = byId("listenHost").value.trim();
       next.listen.port = Number(byId("listenPort").value);
       next.requestTimeoutMs = Number(byId("timeoutMs").value);
+      next.logging.archiveRequests = byId("archiveRequests").value === "true";
       next.routing.defaultProvider = byId("defaultProvider").value;
       next.routing.byHeader = byId("routeHeader").value.trim() || undefined;
       next.routing.autoDetectProviderByFormat = byId("autoDetect").value === "true";
@@ -911,24 +946,41 @@ export function renderAdminHtml(): string {
         openai: byId("openaiProvider").value || undefined
       };
 
+      function resolveInjectPreset(name, prev) {
+        const anth = next.routing.formatProviders?.anthropic;
+        const openai = next.routing.formatProviders?.openai;
+        if (anth && name === anth && name !== openai) {
+          return { header: "x-api-key", prefix: "" };
+        }
+        if (openai && name === openai && name !== anth) {
+          return { header: "authorization", prefix: "Bearer " };
+        }
+        if (prev?.authMode && typeof prev.authMode === "object" && prev.authMode.type === "inject") {
+          return {
+            header: prev.authMode.header || "authorization",
+            prefix: prev.authMode.valuePrefix ?? ""
+          };
+        }
+        return { header: "authorization", prefix: "Bearer " };
+      }
+
       const cards = Array.from(document.querySelectorAll(".provider-item"));
       const providers = {};
       for (const card of cards) {
         const get = (k) => card.querySelector('[data-k="' + k + '"]').value.trim();
-        const oldName = card.getAttribute("data-name");
-        const name = get("name") || oldName || "";
-        const authType = get("authType");
-        const prev = (oldName && state.providers && state.providers[oldName]) || (state.providers && state.providers[name]) || {};
+        const name = (card.getAttribute("data-name") || "").trim();
+        const apiKey = get("apiKey");
+        const prev = (state.providers && state.providers[name]) || {};
+        const injectPreset = resolveInjectPreset(name, prev);
         providers[name] = {
           ...(prev && typeof prev === "object" ? prev : {}),
           baseURL: get("baseURL"),
-          hostHeader: get("hostHeader") || undefined,
-          authMode: authType === "inject"
+          authMode: apiKey
             ? {
                 type: "inject",
-                header: get("injectHeader"),
-                valueFromEnv: get("injectEnv"),
-                valuePrefix: get("injectPrefix") || undefined
+                header: injectPreset.header,
+                value: apiKey,
+                valuePrefix: injectPreset.prefix || undefined
               }
             : "passthrough",
           pathRewrite: Array.isArray(prev?.pathRewrite) ? prev.pathRewrite : []
@@ -942,6 +994,7 @@ export function renderAdminHtml(): string {
       byId("listenHost").value = state.listen.host || "127.0.0.1";
       byId("listenPort").value = state.listen.port || 5290;
       byId("timeoutMs").value = state.requestTimeoutMs || 120000;
+      byId("archiveRequests").value = String(Boolean(state.logging?.archiveRequests));
       byId("routeHeader").value = state.routing.byHeader || "";
       byId("autoDetect").value = String(Boolean(state.routing.autoDetectProviderByFormat));
       renderProviders();
@@ -990,7 +1043,12 @@ export function renderAdminHtml(): string {
       latestVisibleLogs = visible;
       renderOverview(visible);
       if (visible.length === 0) {
-        list.innerHTML = '<div class="log-empty">暂无日志。触发一次 Claude/OpenAI 请求后会显示在这里。</div>';
+        const hint = API_FORMAT_FILTER === "openai"
+          ? "暂无 OpenAI 日志。触发一次 OpenAI 请求后会显示在这里。"
+          : API_FORMAT_FILTER === "anthropic"
+            ? "暂无 Anthropic 日志。触发一次 Anthropic 请求后会显示在这里。"
+            : "暂无日志。触发一次 Claude/OpenAI 请求后会显示在这里。";
+        list.innerHTML = '<div class="log-empty">' + escHtml(hint) + "</div>";
         return;
       }
 
@@ -1037,248 +1095,73 @@ export function renderAdminHtml(): string {
       });
     }
 
-    function recordBodyText(record) {
+    function tryParseJsonText(rawText) {
+      if (typeof rawText !== "string") return null;
+      const text = rawText.trim();
+      if (!text) return null;
+      try {
+        return JSON.parse(text);
+      } catch {
+        return null;
+      }
+    }
+
+    function toNativeBodyView(record) {
       const body = record?.body;
       if (!body || typeof body !== "object") {
         return null;
       }
       if (body.encoding === "utf8") {
-        return String(body.text || "");
+        const rawText = String(body.text || "");
+        const parsedJson = tryParseJsonText(rawText);
+        return {
+          encoding: "utf8",
+          byteLength: typeof body.byteLength === "number" ? body.byteLength : rawText.length,
+          rawText,
+          parsedJson: parsedJson === null ? undefined : parsedJson
+        };
       }
       if (body.encoding === "base64") {
-        return "[binary body: base64 length=" + String((body.base64 || "").length) + ", bytes=" + String(body.byteLength || 0) + "]";
-      }
-      return null;
-    }
-
-    function combineJsonResponseText(rawText) {
-      if (typeof rawText !== "string" || !rawText.trim()) {
-        return rawText;
-      }
-      let body = null;
-      try {
-        body = JSON.parse(rawText);
-      } catch {
-        return rawText;
-      }
-      if (!body || typeof body !== "object") {
-        return rawText;
-      }
-
-      const textParts = [];
-      const toolCalls = [];
-
-      // OpenAI chat.completions
-      if (Array.isArray(body.choices)) {
-        body.choices.forEach((choice) => {
-          const msg = choice?.message;
-          if (!msg || typeof msg !== "object") return;
-          if (typeof msg.content === "string" && msg.content) {
-            textParts.push(msg.content);
-          }
-          if (Array.isArray(msg.tool_calls)) {
-            msg.tool_calls.forEach((tc) => {
-              const fn = tc?.function && typeof tc.function === "object" ? tc.function : null;
-              toolCalls.push({
-                id: tc?.id || tc?.call_id || null,
-                name: fn?.name || tc?.name || "unknown_tool",
-                arguments: String(fn?.arguments || tc?.arguments || "")
-              });
-            });
-          }
-        });
-      }
-
-      // OpenAI responses API
-      if (Array.isArray(body.output)) {
-        body.output.forEach((item) => {
-          if (!item || typeof item !== "object") return;
-          if (typeof item.output_text === "string" && item.output_text) {
-            textParts.push(item.output_text);
-          }
-          if (item.type === "message" && Array.isArray(item.content)) {
-            item.content.forEach((part) => {
-              if (part && typeof part === "object" && typeof part.text === "string" && part.text) {
-                textParts.push(part.text);
-              }
-            });
-          }
-          if (item.type === "function_call" || item.type === "tool_call") {
-            toolCalls.push({
-              id: item.call_id || item.id || null,
-              name: item.name || "unknown_tool",
-              arguments: String(item.arguments || item.input || "")
-            });
-          }
-        });
-      }
-
-      // Anthropic
-      if (Array.isArray(body.content)) {
-        body.content.forEach((block) => {
-          if (!block || typeof block !== "object") return;
-          if (block.type === "text" && typeof block.text === "string" && block.text) {
-            textParts.push(block.text);
-          }
-          if (block.type === "tool_use") {
-            toolCalls.push({
-              id: block.id || null,
-              name: block.name || "unknown_tool",
-              arguments: typeof block.input === "string" ? block.input : JSON.stringify(block.input ?? {})
-            });
-          }
-        });
-      }
-
-      if (textParts.length === 0 && toolCalls.length === 0) {
-        return rawText;
-      }
-      return JSON.stringify({
-        text: textParts.join(""),
-        tool_calls: toolCalls
-      });
-    }
-
-    function combineSseResponseText(record) {
-      const events = Array.isArray(record?.sse?.events) ? record.sse.events : [];
-      const textParts = [];
-      const toolCallsByKey = new Map();
-      let fallbackToolSeq = 0;
-
-      function getToolCall(key, seed) {
-        const curr = toolCallsByKey.get(key) || {
-          id: null,
-          name: "unknown_tool",
-          arguments: ""
-        };
-        const next = {
-          id: seed?.id ?? curr.id ?? null,
-          name: seed?.name || curr.name || "unknown_tool",
-          arguments: curr.arguments || ""
-        };
-        toolCallsByKey.set(key, next);
-        return next;
-      }
-
-      function stableToolKey(base) {
-        if (base && typeof base === "string" && base.trim()) {
-          return base;
-        }
-        fallbackToolSeq += 1;
-        return "unknown_" + fallbackToolSeq;
-      }
-
-      for (const e of events) {
-        const data = String(e?.data || "");
-        if (!data || data === "[DONE]") {
-          continue;
-        }
-        let obj = null;
-        try {
-          obj = JSON.parse(data);
-        } catch {
-          continue;
-        }
-        if (!obj || typeof obj !== "object") {
-          continue;
-        }
-
-        // Anthropic text deltas
-        if (typeof obj.delta === "string" && obj.delta) {
-          textParts.push(obj.delta);
-        }
-        if (obj.delta && typeof obj.delta === "object" && typeof obj.delta.text === "string") {
-          textParts.push(obj.delta.text);
-        }
-        if (obj.content_block && typeof obj.content_block === "object" && typeof obj.content_block.text === "string") {
-          textParts.push(obj.content_block.text);
-        }
-        if (
-          obj.type === "content_block_delta" &&
-          obj.delta &&
-          typeof obj.delta === "object" &&
-          typeof obj.delta.text === "string"
-        ) {
-          textParts.push(obj.delta.text);
-        }
-
-        // OpenAI text + tool_calls
-        if (Array.isArray(obj.choices)) {
-          for (const choice of obj.choices) {
-            if (!choice || typeof choice !== "object") continue;
-            const delta = choice.delta && typeof choice.delta === "object" ? choice.delta : null;
-            if (delta && typeof delta.content === "string") {
-              textParts.push(delta.content);
-            }
-            const tcs = delta && Array.isArray(delta.tool_calls) ? delta.tool_calls : [];
-            for (const tc of tcs) {
-              if (!tc || typeof tc !== "object") continue;
-              const index = Number.isInteger(tc.index) ? tc.index : -1;
-              const key = stableToolKey(index >= 0 ? ("index_" + index) : (tc.id || tc.call_id || ""));
-              const fn = tc.function && typeof tc.function === "object" ? tc.function : null;
-              const item = getToolCall(key, {
-                id: tc.id || tc.call_id || null,
-                name: fn?.name || tc.name || "unknown_tool"
-              });
-              const argChunk = String(fn?.arguments || tc.arguments || "");
-              if (argChunk) {
-                item.arguments += argChunk;
-              }
-              toolCallsByKey.set(key, item);
-            }
-          }
-        }
-
-        // Anthropic tool_use + input_json_delta
-        if (obj.type === "content_block_start" && obj.content_block && typeof obj.content_block === "object") {
-          const cb = obj.content_block;
-          if (cb.type === "tool_use") {
-            const key = stableToolKey(
-              cb.id ? String(cb.id) : (Number.isInteger(obj.index) ? ("index_" + String(obj.index)) : (cb.name ? String(cb.name) : ""))
-            );
-            const item = getToolCall(key, { id: cb.id || null, name: cb.name || "unknown_tool" });
-            if (cb.input && typeof cb.input === "object") {
-              item.arguments += JSON.stringify(cb.input);
-            }
-            toolCallsByKey.set(key, item);
-          }
-        }
-        if (obj.type === "content_block_delta" && obj.delta && typeof obj.delta === "object" && obj.delta.type === "input_json_delta") {
-          const key = stableToolKey(Number.isInteger(obj.index) ? ("index_" + String(obj.index)) : "");
-          const item = getToolCall(key, {});
-          const partial = String(obj.delta.partial_json || "");
-          if (partial) {
-            item.arguments += partial;
-          }
-          toolCallsByKey.set(key, item);
-        }
-      }
-
-      const toolCallParts = Array.from(toolCallsByKey.values()).map((tc) => {
         return {
-          id: tc.id || null,
-          name: tc.name || "unknown_tool",
-          arguments: String(tc.arguments || "")
+          encoding: "base64",
+          byteLength: typeof body.byteLength === "number" ? body.byteLength : 0,
+          base64: String(body.base64 || "")
         };
-      });
-
-      return JSON.stringify({
-        text: textParts.join(""),
-        tool_calls: toolCallParts
-      });
+      }
+      return {
+        encoding: String(body.encoding || "unknown")
+      };
     }
 
     function toRawArchiveJson(detail, fallbackRequestId) {
       const req = detail?.request || null;
       const res = detail?.response || null;
-      const responseText = (res?.isSse && res?.sse && typeof res.sse === "object")
-        ? combineSseResponseText(res)
-        : combineJsonResponseText(recordBodyText(res));
       return {
         requestId: req?.requestId || res?.requestId || fallbackRequestId || null,
         statusCode: typeof res?.statusCode === "number" ? res.statusCode : null,
-        request: recordBodyText(req),
-        response: responseText
+        request: req
+          ? {
+              capturedAt: req.capturedAt || null,
+              method: req.method || null,
+              path: req.path || null,
+              apiFormat: req.apiFormat || null,
+              contentType: req.contentType || null,
+              body: toNativeBodyView(req)
+            }
+          : null,
+        response: res
+          ? {
+              capturedAt: res.capturedAt || null,
+              method: res.method || null,
+              path: res.path || null,
+              apiFormat: res.apiFormat || null,
+              contentType: res.contentType || null,
+              statusCode: typeof res.statusCode === "number" ? res.statusCode : null,
+              isSse: Boolean(res.isSse),
+              sse: res.sse && typeof res.sse === "object" ? res.sse : undefined,
+              body: toNativeBodyView(res)
+            }
+          : null
       };
     }
 
@@ -1367,7 +1250,10 @@ export function renderAdminHtml(): string {
           : '<span class="json-key">"' + escHtml(String(key)) + '"</span>: ';
       const isComposite = value && typeof value === "object";
       if (!isComposite) {
-        const embedded = tryParseEmbeddedJsonString(value);
+        const skipEmbeddedParsing =
+          typeof path === "string" &&
+          (path.endsWith(".rawText") || path.endsWith(".base64"));
+        const embedded = skipEmbeddedParsing ? null : tryParseEmbeddedJsonString(value);
         if (embedded) {
           // Friendly display: parseable JSON string is rendered in-place.
           return renderJsonNode(key, embedded, path + ".__parsed", depth, isLast, fromArray);
@@ -1453,7 +1339,7 @@ export function renderAdminHtml(): string {
 
       try {
         const sessionParam = item.sessionId ? "&sessionId=" + encodeURIComponent(item.sessionId) : "";
-        const r = await fetch("/__admin/api/logs/detail?requestId=" + encodeURIComponent(requestId) + sessionParam);
+        const r = await fetch(withApiFormat("/__admin/api/logs/detail?requestId=" + encodeURIComponent(requestId) + sessionParam));
         if (!r.ok) {
           renderJsonModalPayload({
             requestId,
@@ -1512,13 +1398,53 @@ export function renderAdminHtml(): string {
 
     async function fetchLogsOnce() {
       const limit = Number(byId("logLimit").value || "60");
-      const r = await fetch("/__admin/api/logs?limit=" + limit);
+      const r = await fetch(withApiFormat("/__admin/api/logs?limit=" + limit));
       if (!r.ok) {
         throw new Error("load logs failed");
       }
       const data = await r.json();
       renderLogs(data.items || []);
       setLogState("已连接", true);
+    }
+
+    function setCleanupButtonsDisabled(next) {
+      byId("logCleanupFailedBtn").disabled = next;
+      byId("logCleanupAllBtn").disabled = next;
+    }
+
+    async function cleanupLogs(scope) {
+      if (cleaningLogs) return;
+      const isAll = scope === "all";
+      const ok = isAll
+        ? confirm("确认清理全部文档吗？该操作不可恢复。")
+        : confirm("确认清理请求失败的文档吗？该操作不可恢复。");
+      if (!ok) return;
+
+      cleaningLogs = true;
+      setCleanupButtonsDisabled(true);
+      try {
+        const r = await fetch(withApiFormat("/__admin/api/logs/cleanup"), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ scope })
+        });
+        if (!r.ok) {
+          const t = await r.text();
+          throw new Error(t || "cleanup failed");
+        }
+        const data = await r.json();
+        const label = scope === "all" ? "所有文档" : "请求失败文档";
+        setMessage(
+          "已清理" + label + "，删除请求 " + String(data.removedRequests || 0) + " 条，日志记录 " + String(data.removedRecords || 0) + " 条。",
+          "ok"
+        );
+        await fetchLogsOnce();
+      } catch (e) {
+        setMessage("清理失败: " + e.message, "error");
+      } finally {
+        cleaningLogs = false;
+        setCleanupButtonsDisabled(false);
+      }
     }
 
     function connectLogStream() {
@@ -1534,7 +1460,7 @@ export function renderAdminHtml(): string {
         logEventSource.close();
       }
       const limit = Number(byId("logLimit").value || "60");
-      logEventSource = new EventSource("/__admin/api/logs/stream?limit=" + limit);
+      logEventSource = new EventSource(withApiFormat("/__admin/api/logs/stream?limit=" + limit));
       logEventSource.addEventListener("logs", (ev) => {
         try {
           const payload = JSON.parse(ev.data);
@@ -1594,7 +1520,6 @@ export function renderAdminHtml(): string {
       }
       list.insertAdjacentHTML("beforeend", providerCard("provider_" + idx, {
         baseURL: "https://api.example.com",
-        hostHeader: "",
         authMode: "passthrough"
       }));
       const newItem = list.lastElementChild;
@@ -1602,11 +1527,6 @@ export function renderAdminHtml(): string {
         wireProviderItem(newItem);
       }
       rebuildProviderSelectors();
-      const newNameInput = list.lastElementChild?.querySelector('[data-k="name"]');
-      if (newNameInput) {
-        newNameInput.focus();
-        newNameInput.select();
-      }
       setDirty(true);
       setMessage("已添加新上游，记得保存。", "muted");
     });
@@ -1627,6 +1547,12 @@ export function renderAdminHtml(): string {
     });
     byId("logRefreshBtn").addEventListener("click", () => {
       void fetchLogsOnce();
+    });
+    byId("logCleanupFailedBtn").addEventListener("click", () => {
+      void cleanupLogs("failed");
+    });
+    byId("logCleanupAllBtn").addEventListener("click", () => {
+      void cleanupLogs("all");
     });
     byId("logLimit").addEventListener("change", () => {
       void fetchLogsOnce();

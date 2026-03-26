@@ -1,5 +1,7 @@
 import { dirname, join, parse } from "node:path";
 
+export type ApiFormat = "openai" | "anthropic" | "unknown";
+
 function sanitizeSegment(input: string): string {
   const s = String(input || "")
     .trim()
@@ -17,6 +19,18 @@ export function archiveRootFromLogFile(filePath: string): string {
 export function archiveRecordFilePath(
   filePath: string,
   _sessionId: string | null,
+  requestId: string,
+  type: "request" | "response",
+  apiFormat: ApiFormat = "unknown"
+): string {
+  const root = archiveRootFromLogFile(filePath);
+  const formatPart = sanitizeSegment(apiFormat);
+  const requestPart = sanitizeSegment(requestId);
+  return join(root, "by-format", formatPart, "by-request", requestPart, `${type}.json`);
+}
+
+export function legacyArchiveByRequestFilePath(
+  filePath: string,
   requestId: string,
   type: "request" | "response"
 ): string {
