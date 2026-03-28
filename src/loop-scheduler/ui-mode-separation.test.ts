@@ -18,7 +18,7 @@ test("loop page exposes command/workflow modes and workflow loop strategy", () =
   assert.match(script, /id="workflowLoopFromStart"/);
   assert.match(script, /id="workflowSharedSession"/);
   assert.match(script, /id="workflowFullAccess"/);
-  assert.match(script, /从头循环（直到失败或总超时）/);
+  assert.match(script, /从头循环（直到失败或主动关闭）/);
 });
 
 test("mode panel mounts workflow and command sections separately", () => {

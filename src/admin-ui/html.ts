@@ -3,6 +3,7 @@ export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): s
   const navAllClass = view === "all" ? "entry-link active" : "entry-link";
   const navOpenaiClass = view === "openai" ? "entry-link active" : "entry-link";
   const navAnthropicClass = view === "anthropic" ? "entry-link active" : "entry-link";
+  // language=HTML
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -729,6 +730,8 @@ export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): s
       <div class="modal-head">
         <strong>配对日志 JSON（Agent 相关）</strong>
         <div class="actions">
+          <button class="ghost" id="expandAllJsonBtn">全部展开</button>
+          <button class="ghost" id="collapseAllJsonBtn">全部收起</button>
           <button class="ghost" id="toggleJsonBtn">收起</button>
           <button class="ghost" id="copyJsonBtn">复制 JSON</button>
           <button class="ghost" id="closeJsonBtn">关闭</button>
@@ -1095,15 +1098,46 @@ export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): s
       });
     }
 
-    function tryParseJsonText(rawText) {
-      if (typeof rawText !== "string") return null;
-      const text = rawText.trim();
+    function unwrapJsonString(value, maxDepth) {
+      if (typeof value !== "string") return null;
+      let text = value.trim();
       if (!text) return null;
-      try {
-        return JSON.parse(text);
-      } catch {
-        return null;
+      const depthLimit = Number.isFinite(maxDepth) ? Math.max(1, Number(maxDepth)) : 12;
+
+      for (let i = 0; i < depthLimit; i += 1) {
+        const looksLikeJson =
+          (text.startsWith("{") && text.endsWith("}")) ||
+          (text.startsWith("[") && text.endsWith("]"));
+        if (looksLikeJson) {
+          try {
+            return JSON.parse(text);
+          } catch {
+            return null;
+          }
+        }
+
+        const quoted = text.length >= 2 && text.startsWith('"') && text.endsWith('"');
+        if (!quoted) {
+          return null;
+        }
+        try {
+          const unwrapped = JSON.parse(text);
+          if (typeof unwrapped !== "string") {
+            return null;
+          }
+          text = unwrapped.trim();
+          if (!text) {
+            return null;
+          }
+        } catch {
+          return null;
+        }
       }
+      return null;
+    }
+
+    function tryParseJsonText(rawText) {
+      return unwrapJsonString(rawText, 12);
     }
 
     function toNativeBodyView(record) {
@@ -1114,23 +1148,12 @@ export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): s
       if (body.encoding === "utf8") {
         const rawText = String(body.text || "");
         const parsedJson = tryParseJsonText(rawText);
-        return {
-          encoding: "utf8",
-          byteLength: typeof body.byteLength === "number" ? body.byteLength : rawText.length,
-          rawText,
-          parsedJson: parsedJson === null ? undefined : parsedJson
-        };
+        return parsedJson === null ? rawText : parsedJson;
       }
       if (body.encoding === "base64") {
-        return {
-          encoding: "base64",
-          byteLength: typeof body.byteLength === "number" ? body.byteLength : 0,
-          base64: String(body.base64 || "")
-        };
+        return String(body.base64 || "");
       }
-      return {
-        encoding: String(body.encoding || "unknown")
-      };
+      return null;
     }
 
     function toRawArchiveJson(detail, fallbackRequestId) {
@@ -1177,7 +1200,7 @@ export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): s
     function isJsonNodeExpanded(path, depth) {
       if (jsonNodeExpanded.has(path)) return true;
       if (jsonNodeCollapsed.has(path)) return false;
-      return depth <= 1;
+      return depth <= 3;
     }
 
     function jsonIndent(depth) {
@@ -1199,48 +1222,6 @@ export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): s
       return '<span class="json-muted">' + escHtml(String(value)) + "</span>";
     }
 
-    function tryParseEmbeddedJsonString(value) {
-      if (typeof value !== "string") return null;
-      let s = value.trim();
-      if (!s) return null;
-
-      // Support quoted JSON strings, e.g. "\"{\\\"a\\\":1}\"".
-      for (let i = 0; i < 4; i += 1) {
-        const looksLikeJson =
-          (s.startsWith("{") && s.endsWith("}")) ||
-          (s.startsWith("[") && s.endsWith("]"));
-        if (looksLikeJson) {
-          try {
-            const parsed = JSON.parse(s);
-            if (parsed && typeof parsed === "object") {
-              return parsed;
-            }
-          } catch {
-            return null;
-          }
-          return null;
-        }
-
-        const quoted = s.length >= 2 && s.startsWith('"') && s.endsWith('"');
-        if (!quoted) {
-          return null;
-        }
-        try {
-          const unwrapped = JSON.parse(s);
-          if (typeof unwrapped !== "string") {
-            return null;
-          }
-          s = unwrapped.trim();
-          if (!s) {
-            return null;
-          }
-        } catch {
-          return null;
-        }
-      }
-      return null;
-    }
-
     function renderJsonNode(key, value, path, depth, isLast, fromArray) {
       const comma = isLast ? "" : ",";
       const keyPrefix = key === null
@@ -1250,14 +1231,6 @@ export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): s
           : '<span class="json-key">"' + escHtml(String(key)) + '"</span>: ';
       const isComposite = value && typeof value === "object";
       if (!isComposite) {
-        const skipEmbeddedParsing =
-          typeof path === "string" &&
-          (path.endsWith(".rawText") || path.endsWith(".base64"));
-        const embedded = skipEmbeddedParsing ? null : tryParseEmbeddedJsonString(value);
-        if (embedded) {
-          // Friendly display: parseable JSON string is rendered in-place.
-          return renderJsonNode(key, embedded, path + ".__parsed", depth, isLast, fromArray);
-        }
         return '<div class="json-line" style="' + jsonIndent(depth) + '">' +
           keyPrefix + formatJsonPrimitive(value) + comma +
         "</div>";
@@ -1294,6 +1267,71 @@ export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): s
       return renderJsonNode(null, value, "$", 0, true, false);
     }
 
+    function collectJsonCompositePaths(value, path, target, depthLimit) {
+      if (!value || typeof value !== "object") {
+        return;
+      }
+      if (target.size > 20000) {
+        return;
+      }
+      target.add(path);
+      if (depthLimit <= 0) {
+        return;
+      }
+      if (Array.isArray(value)) {
+        for (let i = 0; i < value.length; i += 1) {
+          collectJsonCompositePaths(value[i], path + "[" + String(i) + "]", target, depthLimit - 1);
+        }
+        return;
+      }
+      for (const [k, v] of Object.entries(value)) {
+        collectJsonCompositePaths(v, path + "." + k, target, depthLimit - 1);
+      }
+    }
+
+    function rerenderJsonTree() {
+      try {
+        const value = currentJsonValue === null ? JSON.parse(currentJsonRawText || "{}") : currentJsonValue;
+        byId("jsonContent").innerHTML = renderJsonTree(value);
+        bindJsonTreeEvents();
+      } catch {
+        byId("jsonContent").textContent = currentJsonText;
+      }
+    }
+
+    function expandAllJsonNodes() {
+      try {
+        const value = currentJsonValue === null ? JSON.parse(currentJsonRawText || "{}") : currentJsonValue;
+        const allPaths = new Set();
+        collectJsonCompositePaths(value, "$", allPaths, 80);
+        jsonNodeCollapsed.clear();
+        for (const p of allPaths.values()) {
+          jsonNodeExpanded.add(p);
+        }
+        rerenderJsonTree();
+      } catch {
+        byId("jsonContent").textContent = currentJsonText;
+      }
+    }
+
+    function collapseAllJsonNodes() {
+      try {
+        const value = currentJsonValue === null ? JSON.parse(currentJsonRawText || "{}") : currentJsonValue;
+        const allPaths = new Set();
+        collectJsonCompositePaths(value, "$", allPaths, 80);
+        jsonNodeExpanded.clear();
+        jsonNodeCollapsed.clear();
+        for (const p of allPaths.values()) {
+          if (p !== "$") {
+            jsonNodeCollapsed.add(p);
+          }
+        }
+        rerenderJsonTree();
+      } catch {
+        byId("jsonContent").textContent = currentJsonText;
+      }
+    }
+
     function bindJsonTreeEvents() {
       const root = byId("jsonContent");
       root.querySelectorAll('button[data-action="toggle-json-node"]').forEach((btn) => {
@@ -1310,13 +1348,7 @@ export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): s
             jsonNodeExpanded.add(path);
             jsonNodeCollapsed.delete(path);
           }
-          try {
-            const value = currentJsonValue === null ? JSON.parse(currentJsonRawText || "{}") : currentJsonValue;
-            byId("jsonContent").innerHTML = renderJsonTree(value);
-            bindJsonTreeEvents();
-          } catch {
-            byId("jsonContent").textContent = currentJsonText;
-          }
+          rerenderJsonTree();
         });
       });
     }
@@ -1577,6 +1609,12 @@ export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): s
     });
     byId("toggleJsonBtn").addEventListener("click", () => {
       setJsonCollapsed(!jsonCollapsed);
+    });
+    byId("expandAllJsonBtn").addEventListener("click", () => {
+      expandAllJsonNodes();
+    });
+    byId("collapseAllJsonBtn").addEventListener("click", () => {
+      collapseAllJsonNodes();
     });
 
     window.addEventListener("beforeunload", (e) => {

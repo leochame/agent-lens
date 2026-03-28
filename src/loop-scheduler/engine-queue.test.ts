@@ -129,7 +129,7 @@ test("queued task is removed when deleted", async () => {
     const removed = await p2;
 
     assert.equal(removed.status, "failed");
-    assert.equal(removed.error, "task removed from queue");
+    assert.equal(removed.error, "task deleted");
     const run1 = await p1;
     assert.equal(run1.status, "success");
   } finally {
@@ -137,7 +137,7 @@ test("queued task is removed when deleted", async () => {
   }
 });
 
-test("immediate conflict run is recorded when recordRun is enabled", async () => {
+test("runNow restarts task when clicked again during running", async () => {
   const { scheduler, cleanup } = await createScheduler();
   try {
     const task = await scheduler.createTask({
@@ -150,14 +150,151 @@ test("immediate conflict run is recorded when recordRun is enabled", async () =>
 
     const first = scheduler.runNow(task.id);
     await waitFor(() => scheduler.getSettings().runningCount === 1);
-    const second = await scheduler.runNow(task.id);
-    const done = await first;
+    const second = scheduler.runNow(task.id);
+    const firstDone = await first;
+    const secondDone = await second;
 
-    assert.equal(second.status, "failed");
-    assert.equal(second.error, "task is already running");
-    assert.equal(done.status, "success");
+    assert.equal(firstDone.status, "cancelled");
+    assert.equal(firstDone.error, "task restarted manually");
+    assert.equal(secondDone.status, "success");
     const runs = scheduler.listRuns(10);
-    assert.ok(runs.some((item) => item.error === "task is already running"));
+    assert.equal(runs.some((item) => item.error === "task is already running"), false);
+    assert.ok(runs.some((item) => item.error === "task restarted manually"));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("multiple runNow clicks while running are coalesced into one restart run", async () => {
+  const { scheduler, cleanup } = await createScheduler();
+  try {
+    const task = await scheduler.createTask({
+      name: "restart-coalesced",
+      runner: "custom",
+      prompt: "run",
+      command: 'node -e "setTimeout(() => process.exit(0), 220)"',
+      intervalSec: 300
+    });
+
+    const first = scheduler.runNow(task.id);
+    await waitFor(() => scheduler.getSettings().runningCount === 1);
+    const second = scheduler.runNow(task.id);
+    const third = scheduler.runNow(task.id);
+    const firstDone = await first;
+    const secondDone = await second;
+    const thirdDone = await third;
+
+    assert.equal(firstDone.status, "cancelled");
+    assert.equal(firstDone.error, "task restarted manually");
+    assert.equal(secondDone.status, "success");
+    assert.equal(thirdDone.status, "success");
+    assert.equal(secondDone.id, thirdDone.id);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("stopTask cancels running task", async () => {
+  const { scheduler, cleanup } = await createScheduler();
+  try {
+    const task = await scheduler.createTask({
+      name: "running-stop",
+      runner: "custom",
+      prompt: "run",
+      command: 'node -e "setInterval(() => {}, 1000)"',
+      intervalSec: 300
+    });
+
+    const pending = scheduler.runNow(task.id);
+    await waitFor(() => scheduler.getSettings().runningCount === 1);
+    const stopInfo = scheduler.stopTask(task.id, "task stopped manually");
+    const run = await pending;
+
+    assert.equal(stopInfo.running, true);
+    assert.equal(run.status, "cancelled");
+    assert.equal(run.error, "task stopped manually");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("deleteTask cancels running task", async () => {
+  const { scheduler, cleanup } = await createScheduler();
+  try {
+    const task = await scheduler.createTask({
+      name: "running-delete",
+      runner: "custom",
+      prompt: "run",
+      command: 'node -e "setInterval(() => {}, 1000)"',
+      intervalSec: 300
+    });
+
+    const pending = scheduler.runNow(task.id);
+    await waitFor(() => scheduler.getSettings().runningCount === 1);
+    await scheduler.deleteTask(task.id);
+    const run = await pending;
+
+    assert.equal(run.status, "cancelled");
+    assert.equal(run.error, "task deleted");
+    assert.equal(scheduler.listTasks().some((item) => item.id === task.id), false);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("runNow resolves even if background child keeps stdio open briefly", async () => {
+  const { scheduler, cleanup } = await createScheduler();
+  try {
+    const task = await scheduler.createTask({
+      name: "background-stdio-open",
+      runner: "custom",
+      prompt: "run",
+      command: 'node -e "setTimeout(() => {}, 2000)" & exit 0',
+      intervalSec: 300
+    });
+
+    const started = Date.now();
+    const run = await scheduler.runNow(task.id);
+    const elapsed = Date.now() - started;
+
+    assert.equal(run.status, "success");
+    assert.ok(elapsed < 1800, `run should settle promptly, got ${elapsed}ms`);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("timer conflict is skipped silently without failed run record", async () => {
+  const { scheduler, cleanup } = await createScheduler();
+  try {
+    const task = await scheduler.createTask({
+      name: "timer-skip-no-noise",
+      runner: "custom",
+      prompt: "run",
+      command: 'node -e "setTimeout(() => process.exit(0), 300)"',
+      intervalSec: 300
+    });
+
+    const first = scheduler.runNow(task.id);
+    await waitFor(() => scheduler.getSettings().runningCount === 1);
+    const taskRef = scheduler.listTasks().find((item) => item.id === task.id);
+    assert.ok(taskRef);
+
+    const skipped = await (scheduler as unknown as {
+      runTask: (
+        taskArg: typeof task,
+        trigger: "timer" | "manual",
+        options: { persistTaskState: boolean; recordRun: boolean; restartIfRunning?: boolean }
+      ) => Promise<{ status: string; error: string | null }>;
+    }).runTask(taskRef!, "timer", { persistTaskState: true, recordRun: true });
+
+    assert.equal(skipped.status, "cancelled");
+    assert.equal(skipped.error, "task already running (timer skipped)");
+    const done = await first;
+    assert.equal(done.status, "success");
+
+    const runs = scheduler.listRuns(20);
+    assert.equal(runs.some((item) => item.error === "task is already running"), false);
   } finally {
     await cleanup();
   }

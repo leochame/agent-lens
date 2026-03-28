@@ -1,50 +1,104 @@
 {
   "tasks": [
     {
-      "id": "3826ec9f-3243-4492-9caa-228d08dff771",
-      "name": "代码开发",
+      "id": "13738940-0607-43d5-b038-6309019a3e92",
+      "name": "上下文管理 (copy)",
       "runner": "custom",
-      "prompt": "只修改当前仓库，代码结构尽可能精简",
+      "prompt": "1. 我们保留长上下文，让大模型只要有工具调用产生就不停止，循环往复。同时注意长上下文的问题",
       "workflow": [],
       "workflowSteps": [
         {
-          "name": "进行全量 Code Review，找出代码存在错误的地方",
+          "name": "1. 根据网上的 Manus 上下管理经验增强和修改当前的实现，包括上下文卸载，上下文有损无损压缩。网上信息多搜索和总结 \\n 2. 同时保证将 Messages 通过上下文进行传递和管理能够正常进行。 \\n 参考： https://manus.im/zh-cn/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus https://zhuanlan.zhihu.com/p/1969533644822521581 https://juejin.cn/post/7611179521161429046\\n 梳理出当前相关的文件，并根据之前的压缩任务，制定开发计划",
           "continueOnError": false,
           "enabled": true
         },
         {
-          "name": "进行修复",
+          "name": "进行开发",
           "continueOnError": false,
           "enabled": true
         },
         {
-          "name": "继续",
+          "name": "继续开发",
           "continueOnError": false,
           "enabled": true
         },
         {
-          "name": "对代码进行增强，记忆系统继续发挥进行增强设计",
+          "name": "进行测试",
           "continueOnError": false,
           "enabled": true
         },
         {
-          "name": "继续",
+          "name": "修复错误",
+          "continueOnError": false,
+          "enabled": true
+        },
+        {
+          "name": "进行code review",
+          "continueOnError": false,
+          "enabled": true
+        },
+        {
+          "name": "解决全部问题",
           "continueOnError": false,
           "enabled": true
         }
       ],
-      "workflowCarryContext": true,
+      "workflowCarryContext": false,
       "workflowLoopFromStart": true,
       "workflowSharedSession": true,
       "workflowFullAccess": true,
-      "intervalSec": 300,
-      "timeoutSec": 300,
-      "enabled": true,
-      "cwd": "/Users/leocham/Documents/code/memory-system",
+      "intervalSec": 900,
+      "enabled": false,
+      "cwd": "/Users/leocham/Documents/code/dev_02/OpenManus-Java",
       "command": "codex exec \"{prompt}\"",
-      "createdAt": "2026-03-26T02:54:04.089Z",
-      "updatedAt": "2026-03-26T04:18:44.618Z",
-      "lastRunAt": "2026-03-26T04:18:44.618Z"
+      "createdAt": "2026-03-27T15:48:27.748Z",
+      "updatedAt": "2026-03-28T05:11:41.727Z",
+      "lastRunAt": "2026-03-28T05:11:40.755Z"
+    },
+    {
+      "id": "423f115a-ebac-4072-9b5b-4148c117b003",
+      "name": "改造",
+      "runner": "custom",
+      "prompt": "## 任务：将 OpenManus-Java 多智能体架构扁平化为单智能体模式\n                                                                                                                                                                                   \n  ### 背景        \n\n  当前架构是 Supervisor + Tool-Calling 多智能体模式：\n  - `AgentHandoff`（Supervisor）持有控制权，将子 Agent 注册为 Tool\n  - 子 Agent 各自持有独立的 ReAct 循环：ThinkingAgent、SearchAgent、CodeAgent、FileAgent、ReflectionAgent\n  - 每次调用子 Agent 时启动新的 ReAct 循环，上下文通过字符串传递，信息损耗严重\n  - `FastThinkWorkflow` 和 `ThinkDoReflectWorkflow` 是两个独立工作流入口\n\n  ### 目标架构\n\n  扁平化为**单智能体 + 统一工具注册**模式：\n  - 一个 `xxxAgent`（`AbstractAgentExecutor` 子类）驱动唯一的 ReAct 循环\n  - 所有工具（文件、搜索、代码执行、反思）直接挂载到该 Agent\n  - 使用 LangChain4j 的 `MessageWindowChatMemory` 或 `ChatMemory` 维护完整对话历史（Message 列表）作为上下文，不再用字符串摘要传递\n  - 文件操作强制限制在沙盒目录（`SessionSandboxManager` 已存在，复用它）\n  - 移除 `ThinkingAgent`、`SearchAgent`、`CodeAgent`、`FileAgent`、`ReflectionAgent` 作为独立 `AbstractAgentExecutor` 的实现；它们的 System Prompt 逻辑合并到 ‘xxxAgent` 的单一\n  System Prompt 中\n  - `FastThinkWorkflow` 和 `ThinkDoReflectWorkflow` 统一为一个 `Workflow`",
+      "workflow": [],
+      "workflowSteps": [
+        {
+          "name": "给出具体开发思路。",
+          "continueOnError": false,
+          "enabled": true
+        },
+        {
+          "name": "进行开发",
+          "continueOnError": false,
+          "enabled": true
+        },
+        {
+          "name": "继续",
+          "continueOnError": false,
+          "enabled": true
+        },
+        {
+          "name": "继续",
+          "continueOnError": false,
+          "enabled": true
+        },
+        {
+          "name": "进行code review",
+          "continueOnError": false,
+          "enabled": true
+        }
+      ],
+      "workflowCarryContext": false,
+      "workflowLoopFromStart": true,
+      "workflowSharedSession": true,
+      "workflowFullAccess": true,
+      "intervalSec": 600,
+      "enabled": false,
+      "cwd": "/Users/leocham/Documents/code/dev_02/OpenManus-Java",
+      "command": "codex exec \"{prompt}\"",
+      "createdAt": "2026-03-27T03:49:17.211Z",
+      "updatedAt": "2026-03-28T01:15:10.261Z",
+      "lastRunAt": "2026-03-28T01:14:43.217Z"
     }
   ]
 }

@@ -3,8 +3,22 @@ import { dirname } from "node:path";
 import { LoopTask } from "./types";
 
 type TaskStorePayload = {
-  tasks: LoopTask[];
+  tasks: unknown[];
 };
+
+function stripTimeoutFields(task: LoopTask): Record<string, unknown> {
+  const workflowSteps = Array.isArray(task.workflowSteps)
+    ? task.workflowSteps.map((step) => {
+      const { timeoutSec: _timeoutSec, ...rest } = step as typeof step & { timeoutSec?: number };
+      return rest;
+    })
+    : [];
+  const { timeoutSec: _timeoutSec, ...rest } = task;
+  return {
+    ...rest,
+    workflowSteps
+  };
+}
 
 export class LoopTaskStore {
   private readonly filePath: string;
@@ -17,7 +31,7 @@ export class LoopTaskStore {
     try {
       const content = await readFile(this.filePath, "utf8");
       const parsed = JSON.parse(content) as TaskStorePayload;
-      return Array.isArray(parsed.tasks) ? parsed.tasks : [];
+      return Array.isArray(parsed.tasks) ? (parsed.tasks as LoopTask[]) : [];
     } catch {
       return [];
     }
@@ -25,7 +39,9 @@ export class LoopTaskStore {
 
   async save(tasks: LoopTask[]): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
-    const payload: TaskStorePayload = { tasks };
+    const payload: TaskStorePayload = {
+      tasks: tasks.map(stripTimeoutFields)
+    };
     await writeFile(this.filePath, JSON.stringify(payload, null, 2), "utf8");
   }
 }

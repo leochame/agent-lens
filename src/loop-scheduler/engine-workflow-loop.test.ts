@@ -314,6 +314,50 @@ test("default claude_code runner shell-quotes prompt safely", async () => {
   }
 });
 
+test("custom command template shell-quotes prompt safely", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-custom-template-quote-"));
+  const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
+  await scheduler.init();
+  try {
+    const calls: string[] = [];
+    (scheduler as unknown as {
+      executeCommand: (
+        command: string,
+        cwd: string,
+        timeoutSec: number,
+        envPatch?: Record<string, string>
+      ) => Promise<{ status: "success"; exitCode: number; stdout: string; stderr: string; error: null }>;
+    }).executeCommand = async (command) => {
+      calls.push(command);
+      return {
+        status: "success",
+        exitCode: 0,
+        stdout: "ok",
+        stderr: "",
+        error: null
+      };
+    };
+
+    const task = await scheduler.createTask({
+      name: "custom-template-quote",
+      runner: "custom",
+      prompt: "line1\nO'Hara $(echo pwn)",
+      command: 'echo "{prompt}"',
+      workflowSharedSession: false,
+      intervalSec: 300,
+      timeoutSec: 30
+    });
+
+    const run = await scheduler.runNow(task.id);
+    assert.equal(run.status, "success");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0], "echo 'line1\nO'\"'\"'Hara $(echo pwn)'");
+  } finally {
+    scheduler.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("workflow shared session defaults to enabled and full-access defaults to disabled", async () => {
   const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-default-flags-"));
   const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
@@ -328,6 +372,63 @@ test("workflow shared session defaults to enabled and full-access defaults to di
     });
     assert.equal(task.workflowSharedSession, true);
     assert.equal(task.workflowFullAccess, false);
+  } finally {
+    scheduler.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("continueOnError failure reports explicit first-failure location", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-continue-on-error-"));
+  const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
+  await scheduler.init();
+  try {
+    let callCount = 0;
+    (scheduler as unknown as {
+      executeCommand: (
+        command: string,
+        cwd: string,
+        timeoutSec: number,
+        envPatch?: Record<string, string>
+      ) => Promise<{ status: "success" | "failed"; exitCode: number; stdout: string; stderr: string; error: string | null }>;
+    }).executeCommand = async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        return {
+          status: "failed",
+          exitCode: 2,
+          stdout: "",
+          stderr: "sed: src/main/resources/application.yml: No such file or directory",
+          error: null
+        };
+      }
+      return {
+        status: "success",
+        exitCode: 0,
+        stdout: "ok",
+        stderr: "",
+        error: null
+      };
+    };
+
+    const task = await scheduler.createTask({
+      name: "continue-on-error-explicit",
+      runner: "custom",
+      prompt: "continue-on-error",
+      command: 'echo "{prompt}"',
+      workflowSteps: [
+        { name: "step-1", continueOnError: true, enabled: true },
+        { name: "step-2", continueOnError: false, enabled: true }
+      ],
+      intervalSec: 300
+    });
+
+    const run = await scheduler.runNow(task.id);
+    assert.equal(run.status, "failed");
+    assert.equal(run.exitCode, 2);
+    assert.match(run.error || "", /first failure at round 1, step 1\/2 \(step-1\)/);
+    assert.match(run.error || "", /status=failed, exit=2/);
+    assert.match(run.error || "", /stderr=sed: src\/main\/resources\/application\.yml: No such file or directory/);
   } finally {
     scheduler.shutdown();
     await rm(dir, { recursive: true, force: true });

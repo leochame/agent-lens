@@ -194,7 +194,7 @@ export async function loadPairedLogs(logPath: string, limit = 80, apiFormat: Api
   }
 
   const lines = takeTail(content.split(/\r?\n/).filter(Boolean), Math.max(limit * 8, 500));
-  const items: PairedLogItem[] = [];
+  const byRequestId = new Map<string, PairedLogItem>();
 
   for (let idx = 0; idx < lines.length; idx += 1) {
     const line = lines[idx];
@@ -206,41 +206,90 @@ export async function loadPairedLogs(logPath: string, limit = 80, apiFormat: Api
       continue;
     }
     const isReq = r.type === "request";
-    const item: PairedLogItem = {
-      logId: `${idx}-${r.type}-${r.requestId}-${r.ts || ""}`,
-      requestId: r.requestId,
-      sessionId: r.sessionId ?? null,
-      startedAt: isReq ? (r.ts ?? null) : null,
-      endedAt: isReq ? null : (r.ts ?? null),
-      durationMs: null,
-      method: r.method ?? null,
-      path: r.path ?? null,
-      provider: r.provider ?? null,
-      apiFormat: r.apiFormat ?? null,
-      model: r.model ?? null,
-      statusCode: !isReq && typeof r.statusCode === "number" ? r.statusCode : null,
-      finishReason: !isReq ? (r.finishReason ?? null) : null,
-      request: isReq
-        ? {
-            stream: r.stream ?? null,
-            systemPromptPreview: r.systemPromptPreview ?? null,
-            messages: Array.isArray(r.messages) ? r.messages : [],
-            tools: Array.isArray(r.tools) ? r.tools : [],
-            parseError: r.parseError ?? null
-          }
-        : null,
-      response: isReq
-        ? null
-        : {
-          responsePreview: r.responsePreview ?? null,
-          messages: Array.isArray(r.responseMessages) ? r.responseMessages : [],
-          usage: r.usage ?? null,
-          parseError: r.parseError ?? null,
-          truncated: Boolean(r.truncated)
-          }
-    };
-    items.push(item);
+    let item = byRequestId.get(r.requestId);
+    if (!item) {
+      item = {
+        logId: r.requestId,
+        requestId: r.requestId,
+        sessionId: r.sessionId ?? null,
+        startedAt: null,
+        endedAt: null,
+        durationMs: null,
+        method: null,
+        path: null,
+        provider: null,
+        apiFormat: null,
+        model: null,
+        statusCode: null,
+        finishReason: null,
+        request: null,
+        response: null
+      };
+      byRequestId.set(r.requestId, item);
+    }
+
+    if (!item.sessionId && r.sessionId) {
+      item.sessionId = r.sessionId;
+    }
+    if (!item.method && r.method) {
+      item.method = r.method;
+    }
+    if (!item.path && r.path) {
+      item.path = r.path;
+    }
+    if (!item.provider && r.provider) {
+      item.provider = r.provider;
+    }
+    if (!item.apiFormat && r.apiFormat) {
+      item.apiFormat = r.apiFormat;
+    }
+    if (!item.model && r.model) {
+      item.model = r.model;
+    }
+
+    if (isReq) {
+      const startedMs = toMs(item.startedAt);
+      const nextStartedMs = toMs(r.ts ?? null);
+      if (startedMs === null || (nextStartedMs !== null && nextStartedMs < startedMs)) {
+        item.startedAt = r.ts ?? null;
+      }
+      item.request = {
+        stream: r.stream ?? null,
+        systemPromptPreview: r.systemPromptPreview ?? null,
+        messages: Array.isArray(r.messages) ? r.messages : [],
+        tools: Array.isArray(r.tools) ? r.tools : [],
+        parseError: r.parseError ?? null
+      };
+      continue;
+    }
+
+    const endedMs = toMs(item.endedAt);
+    const nextEndedMs = toMs(r.ts ?? null);
+    if (endedMs === null || (nextEndedMs !== null && nextEndedMs > endedMs)) {
+      item.endedAt = r.ts ?? null;
+      item.statusCode = typeof r.statusCode === "number" ? r.statusCode : null;
+      item.finishReason = r.finishReason ?? null;
+      item.response = {
+        responsePreview: r.responsePreview ?? null,
+        messages: Array.isArray(r.responseMessages) ? r.responseMessages : [],
+        usage: r.usage ?? null,
+        parseError: r.parseError ?? null,
+        truncated: Boolean(r.truncated)
+      };
+    }
   }
+
+  const items = Array.from(byRequestId.values())
+    .filter((item) => typeof item.statusCode === "number")
+    .map((item) => {
+      const startedMs = toMs(item.startedAt);
+      const endedMs = toMs(item.endedAt);
+      const durationMs =
+        startedMs !== null && endedMs !== null && endedMs >= startedMs
+          ? endedMs - startedMs
+          : null;
+      return { ...item, durationMs };
+    });
 
   const ordered = items.sort((a, b) => {
     const am = toMs(a.startedAt ?? a.endedAt ?? null) ?? 0;

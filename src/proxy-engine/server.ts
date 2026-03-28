@@ -273,7 +273,7 @@ async function handleAdmin(req: IncomingMessage, res: ServerResponse, state: Run
   return true;
 }
 
-export function parseTaskId(pathname: string, action: "run" | "toggle" | null): string | null {
+export function parseTaskId(pathname: string, action: "run" | "toggle" | "stop" | null): string | null {
   const suffix = action ? `/${action}` : "";
   const match = pathname.match(new RegExp(`^/__loop/api/tasks/([^/]+)${suffix}$`));
   if (!match || !match[1]) {
@@ -556,6 +556,28 @@ async function handleLoop(req: IncomingMessage, res: ServerResponse, state: Runt
     }
   }
 
+  if (req.method === "POST" && parsed.pathname.startsWith("/__loop/api/tasks/") && parsed.pathname.endsWith("/stop")) {
+    const taskId = parseTaskId(parsed.pathname, "stop");
+    if (!taskId) {
+      writeJson(res, 404, { error: "Not found" });
+      return true;
+    }
+    const exists = state.loopScheduler.listTasks().some((item) => item.id === taskId);
+    if (!exists) {
+      writeJson(res, 404, { error: "task not found" });
+      return true;
+    }
+    try {
+      const item = state.loopScheduler.stopTask(taskId, "task stopped manually");
+      writeJson(res, 200, { item });
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      writeJson(res, 400, { error: message });
+      return true;
+    }
+  }
+
   if (req.method === "DELETE" && parsed.pathname.startsWith("/__loop/api/tasks/")) {
     const taskId = parseTaskId(parsed.pathname, null);
     if (!taskId) {
@@ -563,8 +585,9 @@ async function handleLoop(req: IncomingMessage, res: ServerResponse, state: Runt
       return true;
     }
     try {
+      const stopInfo = state.loopScheduler.stopTask(taskId, "task deleted");
       await state.loopScheduler.deleteTask(taskId);
-      writeJson(res, 200, { ok: true });
+      writeJson(res, 200, { ok: true, item: stopInfo });
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

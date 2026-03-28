@@ -323,3 +323,28 @@ test("legacy task with all workflow steps disabled fails runNow immediately", as
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("createTask rejects duplicate task name (case-insensitive)", async () => {
+  const { scheduler, cleanup } = await createScheduler();
+  try {
+    await scheduler.createTask({
+      name: "Daily Review",
+      runner: "custom",
+      prompt: "a",
+      intervalSec: 300,
+      command: 'echo "{prompt}"'
+    });
+    await assert.rejects(
+      scheduler.createTask({
+        name: "  daily review  ",
+        runner: "custom",
+        prompt: "b",
+        intervalSec: 300,
+        command: 'echo "{prompt}"'
+      }),
+      /task name already exists/
+    );
+  } finally {
+    await cleanup();
+  }
+});

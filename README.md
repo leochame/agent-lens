@@ -43,7 +43,7 @@ No need to manually edit config files — saving from the UI writes to local con
 After startup, open: `http://127.0.0.1:5290/__loop`
 
 This is a standalone feature and does not change existing proxy behavior. It supports:
-- Creating recurring loop tasks (interval, timeout, working directory or file path)
+- Creating recurring loop tasks (interval, working directory or file path)
 - Runner presets: `Codex` (default) / `Claude Code` / `Custom`
 - Run now, enable/disable, delete
 - Test-run before saving
@@ -55,20 +55,20 @@ This is a standalone feature and does not change existing proxy behavior. It sup
 - Task list search filter (by name/runner)
 - Multi-task parallel execution (configurable global max concurrency with queueing)
 - Single-task multi-stage workflow (one line per stage, e.g. "dev -> code review")
-- Step-to-step context handoff (toggleable; passes key output from previous stage)
 - Workflow shared session (enabled by default; reuses one Codex session across steps/rounds of the same task)
 - Codex access mode switch (standard / Full Access)
 - Per-step runner/command override (format: `step|runner|command`)
 - Per-step cwd/file-path override from frontend visual editor (directory runs directly; file runs from parent directory)
-- Per-step timeout and failure policy override (format: `step|runner|command|timeoutSec|continue/stop`)
+- Per-step failure policy override (format: `step|runner|command|continue/stop`)
 - Visual workflow step editor (add/remove/reorder/enable, with two-way sync to text)
 - Visual editor supports advanced-field toggle (simple/full mode)
 - Built-in step template library (dev/review/summary/test) with one-click insert
-- Text format with prompt append + enable flag: `step|runner|command|promptAppend|timeoutSec|continue/stop|on/off`
+- Text format with prompt append + enable flag: `step|runner|command|promptAppend|continue/stop|on/off`
 - Viewing recent run logs (stdout/stderr/status)
 
 Notes:
 - Tasks execute local shell commands (for example `claude -p "{prompt}"`, `codex exec "{prompt}"`)
+- Loop tasks have no built-in timeout; they end on command failure, manual stop, or upstream/proxy errors
 - Full Access bypasses sandbox/approvals; enable only in trusted environments
 - CLI arguments vary by local version; adjust with custom command if needed
 - Task config is persisted at `config/loop-tasks.json`

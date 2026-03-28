@@ -6,6 +6,7 @@ export type WorkflowStep = {
   cwd?: string | null;
   command?: string | null;
   promptAppend?: string;
+  // Legacy compatibility field. Runtime does not enforce step timeout.
   timeoutSec?: number;
   continueOnError?: boolean;
   enabled?: boolean;
@@ -23,6 +24,7 @@ export type LoopTask = {
   workflowSharedSession: boolean;
   workflowFullAccess: boolean;
   intervalSec: number;
+  // Legacy compatibility field. Runtime does not enforce task timeout.
   timeoutSec: number;
   enabled: boolean;
   cwd: string | null;
@@ -41,7 +43,7 @@ export type LoopRun = {
   startedAt: string;
   endedAt: string;
   durationMs: number;
-  status: "success" | "failed" | "timeout";
+  status: "success" | "failed" | "timeout" | "cancelled";
   exitCode: number | null;
   stdout: string;
   stderr: string;
@@ -62,6 +64,8 @@ export type LoopRunLive = {
   trigger: "timer" | "manual";
   startedAt: string;
   heartbeatAt: string;
+  silenceSec: number;
+  heartbeatStale: boolean;
   phase: "preparing" | "running" | "finishing";
   round: number;
   stepIndex: number;
@@ -83,6 +87,7 @@ export type CreateLoopTaskInput = {
   workflowSharedSession?: boolean;
   workflowFullAccess?: boolean;
   intervalSec: number;
+  // Legacy compatibility field. Accepted but ignored by runtime.
   timeoutSec?: number;
   enabled?: boolean;
   cwd?: string | null;

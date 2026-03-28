@@ -297,6 +297,8 @@ export function renderLoopHtml(): string {
     .tag { font-size: 12px; border-radius: 999px; padding: 4px 8px; border: 1px solid var(--line); color: var(--muted); }
     .ok { color: var(--ok); border-color: #b5e4cb; background: #f2fff8; }
     .error { color: var(--error); border-color: #f2b9b9; background: #fff6f6; }
+    .tag.running { color: #145c39; border-color: #b5e4cb; background: #f2fff8; }
+    .tag.queued { color: #8b5300; border-color: #f0d6b0; background: #fff8ee; }
     .tag.warn-risk { color: var(--warn); border-color: #f0d6b0; background: #fff8ec; }
     pre {
       white-space: pre-wrap;
@@ -357,7 +359,6 @@ export function renderLoopHtml(): string {
           </select>
         </label>
         <label class="field"><span>循环间隔(秒)</span><input id="intervalSec" data-help-key="intervalSec" type="number" min="5" value="300" /><small class="hint">定时触发周期，最小 5 秒；越小执行越频繁。</small></label>
-        <label class="field"><span>超时(秒)</span><input id="timeoutSec" data-help-key="timeoutSec" type="number" min="10" value="300" /><small class="hint">单次任务最长执行时间；到达后会自动终止并记录超时。</small></label>
         <div class="field span2">
           <span>执行模式</span>
           <select id="advancedMode" data-help-key="advancedMode">
@@ -465,7 +466,7 @@ export function renderLoopHtml(): string {
     const modeDraft = {
       cwd: "",
       command: 'codex exec "{prompt}"',
-      workflowCarryContext: "true",
+      workflowCarryContext: "false",
       workflowLoopFromStart: "false",
       workflowSharedSession: "true",
       workflowFullAccess: "false",
@@ -473,7 +474,7 @@ export function renderLoopHtml(): string {
     };
     const MODE_HINTS = {
       command: "自定义命令模式：单步骤执行，默认预填 codex exec 命令模板（可编辑，含 {prompt}）。",
-      workflow: "Workflow 模式：启用多步骤流程、步骤上下文与可视化编排；可用任务命令作为默认，或为每个步骤单独写命令。"
+      workflow: "Workflow 模式：启用多步骤流程与可视化编排；可用任务命令作为默认，或为每个步骤单独写命令。"
     };
     const STEP_TEMPLATES = {
       dev_codex: {
@@ -482,7 +483,6 @@ export function renderLoopHtml(): string {
         cwd: "",
         command: "",
         promptAppend: "根据需求改动代码，优先保证可运行性和最小变更面。",
-        timeoutSec: "",
         continueOnError: false,
         enabled: true
       },
@@ -492,7 +492,6 @@ export function renderLoopHtml(): string {
         cwd: "",
         command: "",
         promptAppend: "重点检查正确性、边界条件、回归风险和缺失测试。",
-        timeoutSec: "",
         continueOnError: false,
         enabled: true
       },
@@ -502,7 +501,6 @@ export function renderLoopHtml(): string {
         cwd: "",
         command: "review-cli \\\\\\\"{prompt}\\\\\\\"",
         promptAppend: "输出问题清单和修复建议。",
-        timeoutSec: "180",
         continueOnError: false,
         enabled: true
       },
@@ -512,7 +510,6 @@ export function renderLoopHtml(): string {
         cwd: "",
         command: "",
         promptAppend: "总结改动内容、影响范围和验证建议。",
-        timeoutSec: "",
         continueOnError: true,
         enabled: true
       },
@@ -522,7 +519,6 @@ export function renderLoopHtml(): string {
         cwd: "",
         command: "",
         promptAppend: "执行并整理相关测试结果，指出失败原因。",
-        timeoutSec: "240",
         continueOnError: false,
         enabled: true
       }
@@ -537,11 +533,6 @@ export function renderLoopHtml(): string {
         title: "字段说明：循环间隔(秒)",
         desc: "任务多久触发一次。间隔越小执行越频繁，也更占资源。",
         example: "示例：300（每 5 分钟）"
-      },
-      timeoutSec: {
-        title: "字段说明：超时(秒)",
-        desc: "单次执行最长时间。超时会中断任务并标记失败。",
-        example: "示例：600（最多执行 10 分钟）"
       },
       advancedMode: {
         title: "字段说明：执行模式",
@@ -560,18 +551,13 @@ export function renderLoopHtml(): string {
       },
       workflow: {
         title: "字段说明：Workflow 文本",
-        desc: "按行定义步骤链路，支持 runner/命令/超时/失败策略，适合复杂自动化。",
+        desc: "按行定义步骤链路，支持 runner/命令/失败策略，适合复杂自动化。",
         example: "示例：开发|custom|my-cli run \\\\\\\"{prompt}\\\\\\\"||300|stop|on"
-      },
-      workflowCarryContext: {
-        title: "字段说明：步骤传递上下文",
-        desc: "开启后，后续步骤能拿到上一步输出摘要，适合开发 -> review 串联。",
-        example: "示例：开启（推荐）"
       },
       workflowLoopFromStart: {
         title: "字段说明：Workflow 执行方式",
         desc: "单轮执行只跑一遍步骤；从头循环会在同一次运行中反复从第一步开始。",
-        example: "示例：从头循环（直到失败或总超时）"
+        example: "示例：从头循环（直到失败或主动关闭）"
       },
       workflowSharedSession: {
         title: "字段说明：Workflow 会话模式",
@@ -620,9 +606,7 @@ export function renderLoopHtml(): string {
       if (commandInputEl && commandInputEl.isConnected) {
         modeDraft.command = String(commandInputEl.value || "");
       }
-      if (workflowCarryContextEl && workflowCarryContextEl.isConnected) {
-        modeDraft.workflowCarryContext = String(workflowCarryContextEl.value || "true");
-      }
+      modeDraft.workflowCarryContext = "false";
       if (workflowLoopFromStartEl && workflowLoopFromStartEl.isConnected) {
         modeDraft.workflowLoopFromStart = String(workflowLoopFromStartEl.value || "false");
       }
@@ -660,21 +644,20 @@ export function renderLoopHtml(): string {
         modePanelHostEl.innerHTML = ''
           + '<div id="cwdFieldWrap" class="field span2"><span>工作目录 / 文件路径（可选）</span><input id="cwd" data-help-key="cwd" placeholder="例如：/path/project 或 /path/project/src/app.ts" /><small class="hint">目录：直接作为执行 cwd；文件：自动使用父目录并附加 Focus file 提示。</small></div>'
           + '<label id="commandFieldWrap" class="field span2"><span>任务级命令（可选，含 {prompt} 占位）</span><input id="command" data-help-key="command" placeholder="例如：my-cli run &quot;{prompt}&quot;" /><small class="hint">步骤未填 command 时会回退到这里。</small></label>'
-          + '<label id="workflowCarryField" class="field"><span>步骤传递上下文</span><select id="workflowCarryContext" data-help-key="workflowCarryContext"><option value="true" selected>开启（推荐）</option><option value="false">关闭</option></select><small class="hint">开启后，后续步骤会拿到前一步的关键输出。</small></label>'
-          + '<label id="workflowLoopField" class="field"><span>Workflow 执行方式</span><select id="workflowLoopFromStart" data-help-key="workflowLoopFromStart"><option value="false" selected>单轮执行（一次）</option><option value="true">从头循环（直到失败或总超时）</option></select><small class="hint">适合“持续开发 -> 复审 -> 再开发”的闭环场景。</small></label>'
+          + '<label id="workflowLoopField" class="field"><span>Workflow 执行方式</span><select id="workflowLoopFromStart" data-help-key="workflowLoopFromStart"><option value="false" selected>单轮执行（一次）</option><option value="true">从头循环（直到失败或主动关闭）</option></select><small class="hint">适合“持续开发 -> 复审 -> 再开发”的闭环场景。</small></label>'
           + '<label id="workflowSessionField" class="field"><span>Workflow 会话模式</span><select id="workflowSharedSession" data-help-key="workflowSharedSession"><option value="true" selected>共享会话（默认）</option><option value="false">每步新会话</option></select><small class="hint">开启后，同任务步骤会复用同一个 Codex 会话。</small></label>'
           + '<label id="workflowAccessField" class="field"><span>Codex 权限模式</span><select id="workflowFullAccess" data-help-key="workflowFullAccess"><option value="false" selected>标准（推荐）</option><option value="true">Full Access（危险）</option></select><small class="hint">仅对 Codex 命令生效。Full Access 会跳过沙箱/审批。</small></label>'
-          + '<div id="workflowBuilderField" class="field span4"><span>Workflow 可视化编辑器</span><div id="workflowPanelHost" class="wf-builder"><div class="muted">切换到 Workflow 模式后按需加载编辑器。</div></div><small class="hint">推荐优先在这里维护步骤顺序、开关、超时和错误策略。</small></div>';
+          + '<div id="workflowBuilderField" class="field span4"><span>Workflow 可视化编辑器</span><div id="workflowPanelHost" class="wf-builder"><div class="muted">切换到 Workflow 模式后按需加载编辑器。</div></div><small class="hint">推荐优先在这里维护步骤顺序、开关和错误策略。</small></div>';
         cwdInputEl = document.getElementById("cwd");
         commandInputEl = document.getElementById("command");
-        workflowCarryContextEl = document.getElementById("workflowCarryContext");
+        workflowCarryContextEl = null;
         workflowLoopFromStartEl = document.getElementById("workflowLoopFromStart");
         workflowSharedSessionEl = document.getElementById("workflowSharedSession");
         workflowFullAccessEl = document.getElementById("workflowFullAccess");
         workflowPanelHostEl = document.getElementById("workflowPanelHost");
         if (cwdInputEl) cwdInputEl.value = modeDraft.cwd;
         if (commandInputEl) commandInputEl.value = modeDraft.command;
-        if (workflowCarryContextEl) workflowCarryContextEl.value = modeDraft.workflowCarryContext || "true";
+        modeDraft.workflowCarryContext = "false";
         if (workflowLoopFromStartEl) workflowLoopFromStartEl.value = modeDraft.workflowLoopFromStart || "false";
         if (workflowSharedSessionEl) workflowSharedSessionEl.value = modeDraft.workflowSharedSession || "true";
         if (workflowFullAccessEl) workflowFullAccessEl.value = modeDraft.workflowFullAccess || "false";
@@ -738,7 +721,6 @@ export function renderLoopHtml(): string {
           cwd: "",
           command: "",
           promptAppend: "",
-          timeoutSec: "",
           continueOnError: false,
           enabled: true
         });
@@ -852,10 +834,15 @@ export function renderLoopHtml(): string {
 
     function draftWarningsOf(body) {
       const warns = [];
+      const duplicate = cachedTasks.find(function (item) {
+        if (!item || !item.name) return false;
+        if (editingTaskId && item.id === editingTaskId) return false;
+        return String(item.name).trim().toLowerCase() === String(body.name || "").trim().toLowerCase();
+      });
+      if (duplicate) warns.push("任务名称重复：请使用唯一名称。");
       if (!body.name) warns.push("任务名称为空：后续不便于识别和检索。");
       if (!body.prompt) warns.push("Prompt 为空：任务将无法创建或测试。");
       if (!Number.isFinite(body.intervalSec) || body.intervalSec < 5) warns.push("循环间隔需 >= 5 秒。");
-      if (!Number.isFinite(body.timeoutSec) || body.timeoutSec < 10) warns.push("超时需 >= 10 秒。");
       const mode = String(advancedModeEl.value || "command");
       if (mode === "command" && !body.command) warns.push("命令为空：自定义命令模式下必须填写命令。");
       if (mode === "workflow") {
@@ -882,7 +869,7 @@ export function renderLoopHtml(): string {
       return warns.some(function (w) {
         const text = String(w || "");
         return text.includes(">= 5")
-          || text.includes(">= 10")
+          || text.includes("名称重复")
           || text.includes("命令为空")
           || text.includes("至少需要 1 个启用步骤")
           || text.includes("未填写命令");
@@ -914,7 +901,7 @@ export function renderLoopHtml(): string {
           '<div class="draft-item"><b>任务</b>' + esc(body.name || "(未填写)") + "</div>",
           '<div class="draft-item"><b>Runner</b>' + esc(body.runner || "-") + "</div>",
           '<div class="draft-item"><b>下一次预计执行</b>' + esc(formatNextRun(body.intervalSec)) + "</div>",
-          '<div class="draft-item"><b>间隔 / 超时</b>' + esc(String(body.intervalSec) + "s / " + String(body.timeoutSec) + "s") + "</div>",
+          '<div class="draft-item"><b>循环间隔</b>' + esc(String(body.intervalSec) + "s") + "</div>",
           '<div class="draft-item"><b>路径</b>' + esc(body.cwd || "(默认服务目录)") + "</div>",
           '<div class="draft-item"><b>流程 / 命令模式</b>' + esc((workflowEnabled ? "多步骤" : "单步骤") + " / 自定义命令") + "</div>",
           '<div class="draft-item"><b>Workflow 启用步骤</b>' + esc(String(enabledSteps)) + "</div>",
@@ -969,7 +956,7 @@ export function renderLoopHtml(): string {
       editingTaskEnabled = true;
       modeDraft.cwd = "";
       modeDraft.command = 'codex exec "{prompt}"';
-      modeDraft.workflowCarryContext = "true";
+      modeDraft.workflowCarryContext = "false";
       modeDraft.workflowLoopFromStart = "false";
       modeDraft.workflowSharedSession = "true";
       modeDraft.workflowFullAccess = "false";
@@ -1003,14 +990,33 @@ export function renderLoopHtml(): string {
       if (lower.includes("command not found") || lower.includes("exit: 127")) {
         return "命令未找到：请确认命令可执行，并且 PATH 配置正确。";
       }
-      if (lower.includes("path not found") || lower.includes("no such file or directory")) {
+      let isPathValidationError = lower.includes("path not found");
+      if (!isPathValidationError && lower.includes("no such file or directory")) {
+        const lines = text.split(/\\r?\\n/);
+        isPathValidationError = lines.some(function (line) {
+          const lineLower = String(line || "").toLowerCase();
+          if (!lineLower.includes("no such file or directory")) {
+            return false;
+          }
+          return lineLower.includes("cwd")
+            || lineLower.includes("workdir")
+            || lineLower.includes("workflow step")
+            || lineLower.includes("path-check")
+            || lineLower.includes("stat(")
+            || /\bstat\b/.test(lineLower);
+        });
+      }
+      if (isPathValidationError) {
         return "路径不存在：请检查工作目录/文件路径是否正确。";
       }
       if (lower.includes("permission denied")) {
         return "权限不足：当前目录不可访问，请切换路径或调整权限。";
       }
       if (lower.includes("task timeout") || lower.includes("timed out")) {
-        return "任务超时：可增大超时秒数，或缩短任务执行内容。";
+        return "上游或中转请求超时：请检查网络、上游稳定性或重试。";
+      }
+      if (lower.includes("task name already exists")) {
+        return "任务名称已存在：请改成唯一名称。";
       }
       return text;
     }
@@ -1076,7 +1082,6 @@ export function renderLoopHtml(): string {
         cwd: step && step.cwd ? String(step.cwd).trim() : "",
         command: step && step.command ? String(step.command).trim() : "",
         promptAppend: step && step.promptAppend ? String(step.promptAppend).trim() : "",
-        timeoutSec: step && step.timeoutSec ? String(step.timeoutSec).trim() : "",
         continueOnError: parseUiBoolean(step && step.continueOnError, false),
         enabled: parseUiBoolean(step && step.enabled, true)
       };
@@ -1091,7 +1096,6 @@ export function renderLoopHtml(): string {
         cwd: tpl.cwd,
         command: tpl.command,
         promptAppend: tpl.promptAppend,
-        timeoutSec: tpl.timeoutSec,
         continueOnError: tpl.continueOnError,
         enabled: tpl.enabled
       };
@@ -1116,7 +1120,6 @@ export function renderLoopHtml(): string {
           + '<input class="wf-adv" data-k="cwd" value="' + esc(r.cwd || "") + '" placeholder="可选：步骤路径(目录/文件)" />'
           + '<input class="wf-adv" data-k="command" value="' + esc(r.command) + '" placeholder="可选：覆盖命令" />'
           + '<input class="wf-adv" data-k="promptAppend" value="' + esc(r.promptAppend || "") + '" placeholder="可选：附加提示" />'
-          + '<input class="wf-adv" data-k="timeoutSec" type="number" min="10" value="' + esc(r.timeoutSec) + '" placeholder="超时" />'
           + '<select class="wf-adv" data-k="continueOnError">'
           + '<option value="false"' + (r.continueOnError ? "" : " selected") + '>stop</option>'
           + '<option value="true"' + (r.continueOnError ? " selected" : "") + '>continue</option>'
@@ -1142,14 +1145,12 @@ export function renderLoopHtml(): string {
       modeDraft.workflowSteps = normalizedRows
         .filter(function (row) { return row.name; })
         .map(function (row) {
-          const timeoutValue = row.timeoutSec ? Number(row.timeoutSec) : undefined;
           return {
             name: row.name,
             runner: row.runner || undefined,
             cwd: row.cwd || undefined,
             command: row.command || undefined,
             promptAppend: row.promptAppend || undefined,
-            timeoutSec: Number.isFinite(timeoutValue) && timeoutValue > 0 ? timeoutValue : undefined,
             continueOnError: row.continueOnError,
             enabled: row.enabled
           };
@@ -1168,6 +1169,16 @@ export function renderLoopHtml(): string {
       localStorage.setItem(STORAGE_LAST_SUCCESS, JSON.stringify(body));
     }
 
+    function taskRuntimeState(taskId) {
+      if (cachedLiveRuns.some(function (x) { return x && x.taskId === taskId; })) {
+        return "running";
+      }
+      if (cachedQueue.some(function (x) { return x && x.taskId === taskId; })) {
+        return "queued";
+      }
+      return "idle";
+    }
+
     function taskRow(item) {
       const enabledTag = item.enabled
         ? '<span class="tag ok">启用</span>'
@@ -1183,32 +1194,58 @@ export function renderLoopHtml(): string {
           const stepRunner = step.runner ? String(step.runner) : item.runner;
           const stepCwd = step.cwd ? ",cwd=" + String(step.cwd) : "";
           const stepAppend = step.promptAppend ? ",append" : "";
-          const stepTimeout = step.timeoutSec ? ",t=" + step.timeoutSec + "s" : "";
           const stepErr = step.continueOnError ? ",onError=continue" : "";
-          return stepName + "(" + stepRunner + stepCwd + stepAppend + stepTimeout + stepErr + ")";
+          return stepName + "(" + stepRunner + stepCwd + stepAppend + stepErr + ")";
         }).join(" -> ")
         : workflowText;
-      const carryText = item.workflowCarryContext === false ? "关" : "开";
       const loopText = item.workflowLoopFromStart ? "从头循环" : "单轮";
       const sessionText = item.workflowSharedSession === false ? "每步新会话" : "共享会话";
       const accessText = item.workflowFullAccess ? "Full Access" : "标准";
+      const runtimeState = taskRuntimeState(item.id);
+      const isRunning = runtimeState === "running";
+      const isQueued = runtimeState === "queued";
+      const isActive = isRunning || isQueued;
+      const runtimeTag = runtimeState === "running"
+        ? '<span class="tag running">运行中</span>'
+        : (runtimeState === "queued" ? '<span class="tag queued">排队中</span>' : '<span class="tag">空闲</span>');
+      const runLabel = isRunning
+        ? "重启执行"
+        : (isQueued ? "重新触发" : (item.enabled ? "立即执行" : "手动执行"));
+      const runClass = isRunning || isQueued ? "warn" : "";
+      const stopButton = isRunning || isQueued
+        ? ('<button class="warn" data-act="stop" data-id="' + esc(item.id) + '">' + (isRunning ? "停止本轮" : "取消排队") + '</button>')
+        : "";
+      const toggleLabel = item.enabled
+        ? ((isRunning || isQueued) ? "停用(并停止)" : "停用")
+        : "启用";
+      const runtimeHint = isRunning
+        ? "正在运行：可重启本轮、停止本轮，编辑暂不可用。"
+        : (isQueued
+          ? "正在排队：可重新触发（合并请求）或取消排队。"
+          : (item.enabled ? "空闲且已启用：可立即执行或编辑。" : "空闲且已停用：可手动执行，或先启用定时任务。"));
+      const editDisabled = isActive ? ' disabled title="任务运行/排队中，先停止后再编辑"' : "";
+      const deleteLabel = isActive ? "删除(并终止)" : "删除";
+      const deleteClass = isActive ? "warn" : "danger";
       return '<div class="task-item">'
         + '<div class="row"><div class="row" style="gap:8px;"><strong>' + esc(item.name) + '</strong></div><div class="row" style="gap:6px;">'
         + enabledTag
+        + runtimeTag
         + '<span class="tag">' + esc(item.runner) + '</span>'
         + '<span class="tag">' + esc(item.intervalSec) + 's</span>'
         + '<span class="tag">' + esc(sessionText) + '</span>'
         + '<span class="tag' + (item.workflowFullAccess ? ' warn-risk' : '') + '">' + esc(accessText) + '</span>'
         + '</div></div>'
         + '<div class="muted" style="margin-top:6px;">path: ' + esc(item.cwd || "(默认)")
-        + ' | timeout: ' + esc(item.timeoutSec) + 's | 上下文传递: ' + esc(carryText) + ' | 执行方式: ' + esc(loopText) + ' | 会话: ' + esc(sessionText) + ' | 权限: ' + esc(accessText) + ' | 最近执行: ' + esc(formatTime(item.lastRunAt)) + '</div>'
+        + ' | 执行方式: ' + esc(loopText) + ' | 会话: ' + esc(sessionText) + ' | 权限: ' + esc(accessText) + ' | 最近执行: ' + esc(formatTime(item.lastRunAt)) + '</div>'
+        + '<div class="muted" style="margin-top:4px;">状态提示: ' + esc(runtimeHint) + '</div>'
         + '<pre style="margin-top:8px;">workflow: ' + esc(stepDetail) + '\\nprompt: ' + esc(item.prompt) + '\\ncommand: ' + esc(cmd) + '</pre>'
         + '<div class="actions">'
-        + '<button data-act="run" data-id="' + esc(item.id) + '">立即执行</button>'
-        + '<button class="ghost" data-act="edit" data-id="' + esc(item.id) + '">' + editLabel + '</button>'
+        + '<button class="' + runClass + '" data-act="run" data-id="' + esc(item.id) + '">' + runLabel + '</button>'
+        + stopButton
+        + '<button class="ghost" data-act="edit" data-id="' + esc(item.id) + '"' + editDisabled + '>' + editLabel + '</button>'
         + '<button class="warn" data-act="clone" data-id="' + esc(item.id) + '">复制到表单</button>'
-        + '<button class="ghost" data-act="toggle" data-id="' + esc(item.id) + '">' + (item.enabled ? "停用" : "启用") + '</button>'
-        + '<button class="danger" data-act="delete" data-id="' + esc(item.id) + '">删除</button>'
+        + '<button class="ghost" data-act="toggle" data-id="' + esc(item.id) + '">' + toggleLabel + '</button>'
+        + '<button class="' + deleteClass + '" data-act="delete" data-id="' + esc(item.id) + '">' + deleteLabel + '</button>'
         + '</div></div>';
     }
 
@@ -1217,13 +1254,12 @@ export function renderLoopHtml(): string {
       document.getElementById("runner").value = "custom";
       document.getElementById("prompt").value = item.prompt || "";
       document.getElementById("intervalSec").value = String(item.intervalSec || 300);
-      document.getElementById("timeoutSec").value = String(item.timeoutSec || 300);
       modeDraft.cwd = item.cwd || "";
       modeDraft.command = item.command || "";
       modeDraft.workflowSteps = Array.isArray(item.workflowSteps) && item.workflowSteps.length
         ? item.workflowSteps.map(normalizeStep)
         : (Array.isArray(item.workflow) ? item.workflow.map(function (name) { return normalizeStep({ name: name }); }) : []);
-      modeDraft.workflowCarryContext = item.workflowCarryContext === false ? "false" : "true";
+      modeDraft.workflowCarryContext = "false";
       modeDraft.workflowLoopFromStart = item.workflowLoopFromStart ? "true" : "false";
       modeDraft.workflowSharedSession = item.workflowSharedSession === false ? "false" : "true";
       modeDraft.workflowFullAccess = item.workflowFullAccess ? "true" : "false";
@@ -1305,12 +1341,17 @@ export function renderLoopHtml(): string {
         ? ("第 " + run.round + " 轮，第 " + run.stepIndex + "/" + run.totalSteps + " 步：" + run.stepName)
         : ("第 " + run.round + " 轮，准备中");
       const heartbeatText = run.heartbeatAt ? formatTime(run.heartbeatAt) : "-";
+      const silenceSec = Number.isFinite(Number(run.silenceSec)) ? Number(run.silenceSec) : 0;
+      const heartbeatStale = run.heartbeatStale === true;
+      const heartbeatTagClass = heartbeatStale ? "warn-risk" : "running";
+      const heartbeatTagText = heartbeatStale ? ("疑似卡住(" + silenceSec + "s)") : ("心跳正常(" + silenceSec + "s)");
       let html = '<div class="run-item">'
         + '<div class="row"><strong>' + esc(run.taskName) + '</strong><div class="row" style="gap:6px;">'
         + '<span class="tag ok">running</span>'
         + '<span class="tag">' + esc(run.runner) + '</span>'
         + '<span class="tag">' + esc(run.trigger) + '</span>'
         + '<span class="tag">' + esc(run.phase || "running") + '</span>'
+        + '<span class="tag ' + heartbeatTagClass + '">' + esc(heartbeatTagText) + '</span>'
         + '</div></div>'
         + '<div class="muted" style="margin-top:6px;">开始: ' + esc(formatTime(run.startedAt))
         + ' | 心跳: ' + esc(heartbeatText)
@@ -1434,14 +1475,12 @@ export function renderLoopHtml(): string {
       const rawCommand = commandInputEl ? (commandInputEl.value.trim() || null) : null;
       const workflowSteps = workflowEnabled
         ? workflowBuilderRows.map(normalizeStep).filter(function (row) { return row.name; }).map(function (row) {
-            const timeoutValue = row.timeoutSec ? Number(row.timeoutSec) : undefined;
             return {
               name: row.name,
               runner: row.runner || undefined,
               cwd: row.cwd || undefined,
               command: row.command || undefined,
               promptAppend: row.promptAppend || undefined,
-              timeoutSec: Number.isFinite(timeoutValue) && timeoutValue > 0 ? timeoutValue : undefined,
               continueOnError: row.continueOnError,
               enabled: row.enabled
             };
@@ -1452,12 +1491,11 @@ export function renderLoopHtml(): string {
         runner: "custom",
         prompt: document.getElementById("prompt").value.trim(),
         intervalSec: Number(document.getElementById("intervalSec").value),
-        timeoutSec: Number(document.getElementById("timeoutSec").value),
         cwd: cwdInputEl ? (cwdInputEl.value.trim() || null) : null,
         command: rawCommand,
         workflow: "",
         workflowSteps: workflowSteps,
-        workflowCarryContext: workflowEnabled ? ((workflowCarryContextEl ? workflowCarryContextEl.value : "true") !== "false") : false,
+        workflowCarryContext: false,
         workflowLoopFromStart: workflowEnabled ? ((workflowLoopFromStartEl ? workflowLoopFromStartEl.value : "false") === "true") : false,
         workflowSharedSession: workflowEnabled ? ((workflowSharedSessionEl ? workflowSharedSessionEl.value : "true") !== "false") : false,
         workflowFullAccess: workflowEnabled ? ((workflowFullAccessEl ? workflowFullAccessEl.value : "false") === "true") : false,
@@ -1575,22 +1613,41 @@ export function renderLoopHtml(): string {
       const act = buttonEl.getAttribute("data-act");
       const id = buttonEl.getAttribute("data-id");
       if (!act || !id) return;
+      const taskItem = cachedTasks.find(function (x) { return x.id === id; }) || null;
+      const runtimeState = taskRuntimeState(id);
+      const busyText = act === "delete"
+        ? "删除中..."
+        : (act === "run"
+          ? (runtimeState === "running" ? "重启中..." : (runtimeState === "queued" ? "重排中..." : "执行中..."))
+          : (act === "toggle"
+            ? "切换中..."
+            : (act === "stop" ? "关闭中..." : "")));
       await withButtonBusy(
         buttonEl,
-        act === "delete" ? "删除中..." : act === "run" ? "执行中..." : act === "toggle" ? "切换中..." : "",
+        busyText,
         async function () {
           try {
             if (act === "run") {
+              if (runtimeState === "running") {
+                const ok = window.confirm("当前任务正在运行。确认停止当前执行并立即重启吗？");
+                if (!ok) return;
+              } else if (runtimeState === "queued") {
+                const ok = window.confirm("当前任务已在队列中。确认重新触发并合并为最新一次请求吗？");
+                if (!ok) return;
+              }
               const data = await api("/__loop/api/tasks/" + id + "/run", { method: "POST" });
               const run = data && data.item ? data.item : null;
+              const actionName = runtimeState === "running"
+                ? "重启执行"
+                : (runtimeState === "queued" ? "重新触发" : "执行");
               if (run && run.status === "success") {
-                msg("执行完成：成功", false);
+                msg(actionName + "完成：成功", false);
               } else if (run) {
                 const diagnosis = diagnoseRun(run);
                 const reason = diagnosis || run.error || "执行失败";
-                msg("执行完成：失败，" + reason, true);
+                msg(actionName + "完成：失败，" + reason, true);
               } else {
-                msg("执行完成", false);
+                msg(actionName + "完成", false);
               }
             } else if (act === "edit") {
               const item = cachedTasks.find(function (x) { return x.id === id; });
@@ -1615,14 +1672,47 @@ export function renderLoopHtml(): string {
               msg("已复制到表单，可直接创建新任务", false);
               return;
             } else if (act === "toggle") {
-              await api("/__loop/api/tasks/" + id + "/toggle", { method: "POST" });
-              msg("状态已切换", false);
-            } else if (act === "delete") {
-              if (!window.confirm("确认删除这个任务吗？")) {
+              if (!taskItem) {
+                msg("任务不存在或已刷新", true);
                 return;
               }
-              await api("/__loop/api/tasks/" + id, { method: "DELETE" });
-              msg("任务已删除", false);
+              if (!taskItem.enabled && runtimeState === "running") {
+                msg("任务正在运行，请先停止后再启用/停用。", true);
+                return;
+              }
+              if (taskItem.enabled && (runtimeState === "running" || runtimeState === "queued")) {
+                const ok = window.confirm("停用任务将先停止当前运行/排队，确认继续吗？");
+                if (!ok) return;
+                await api("/__loop/api/tasks/" + id + "/stop", { method: "POST" });
+              }
+              await api("/__loop/api/tasks/" + id + "/toggle", { method: "POST" });
+              if (taskItem.enabled) {
+                msg(runtimeState === "running" || runtimeState === "queued" ? "任务已停止并停用" : "任务已停用", false);
+              } else {
+                msg("任务已启用", false);
+              }
+            } else if (act === "stop") {
+              const data = await api("/__loop/api/tasks/" + id + "/stop", { method: "POST" });
+              const item = data && data.item ? data.item : null;
+              if (item && (item.running || item.queued > 0)) {
+                msg(runtimeState === "queued" ? "任务已取消排队" : "任务已停止本轮执行", false);
+              } else {
+                msg("任务当前未在运行或排队", false);
+              }
+            } else if (act === "delete") {
+              const confirmText = runtimeState === "running" || runtimeState === "queued"
+                ? "该任务正在运行/排队。删除将终止执行并清空排队，确认删除吗？"
+                : "确认删除这个任务吗？";
+              if (!window.confirm(confirmText)) {
+                return;
+              }
+              const data = await api("/__loop/api/tasks/" + id, { method: "DELETE" });
+              const item = data && data.item ? data.item : null;
+              if (item && (item.running || item.queued > 0)) {
+                msg("任务已删除，并终止了正在运行/排队的执行", false);
+              } else {
+                msg("任务已删除", false);
+              }
               if (editingTaskId === id) {
                 resetFormToCreate();
               }

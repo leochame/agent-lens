@@ -19,16 +19,16 @@ providers:
       value: sk-K37VK2NWCTPCUMut6JemgfVj4XKITJ74WmvJ4n4knWGz6EtC
     pathRewrite: []
   provider_2:
-    baseURL: https://ai.dooo.ng/v1
+    baseURL: https://aixj.vip
     authMode:
       type: inject
       header: authorization
-      value: sk-43d53f98a21060f75612ac6f280dd8ee79fdd7afaf10be6c9cafbb6fb8b506db
+      value: sk-1b41e615614e1dbba4a4fb0e8920f71dfd0e8d2205482ff33c0ba4af836f3fa5
       valuePrefix: "Bearer "
     pathRewrite: []
 logging:
   filePath: ./logs/requests.jsonl
-  archiveRequests: false
+  archiveRequests: true
   maxArchiveBodyBytes: 0
   redactHeaders:
     - authorization
