@@ -29,6 +29,15 @@ export type ResponseLogPayload = {
   truncated: boolean;
 };
 
+export type RealtimeRequestUsageMetrics = {
+  generatedAt: string;
+  openai1m: number;
+  openai2m: number;
+  claudeCode1m: number;
+  claudeCode2m: number;
+  sampledRequestRecords: number;
+};
+
 type LogRecord = {
   type: "request" | "response";
   ts: string;
@@ -143,9 +152,29 @@ function extractTextFromOpenAiContentPart(
   part: Record<string, unknown>
 ): string {
   const t = asString(part.type);
+  if (t.includes("reasoning")) {
+    const summary = Array.isArray(part.summary) ? part.summary : [];
+    const summaryText = summary
+      .map((entry) => {
+        if (!entry || typeof entry !== "object") {
+          return "";
+        }
+        const obj = entry as Record<string, unknown>;
+        return asString(obj.text || obj.summary_text || obj.content);
+      })
+      .filter(Boolean)
+      .join("\n");
+    if (summaryText) {
+      return summaryText;
+    }
+  }
   const direct = asString(part.text || part.output_text || part.input_text || part.content);
   if (direct) {
     return direct;
+  }
+  const reasoningText = asString(part.reasoning || part.reasoning_text);
+  if (reasoningText) {
+    return reasoningText;
   }
   return "";
 }
@@ -804,7 +833,7 @@ function summarizeSseResponse(rawBody: Buffer): {
           const role = asString(ii.role) || "assistant";
           const content = Array.isArray(ii.content) ? ii.content : [];
           const textJoined = content
-            .map((c) => (c && typeof c === "object" ? asString((c as Record<string, unknown>).text) : ""))
+            .map((c) => (c && typeof c === "object" ? extractTextFromOpenAiContentPart(c as Record<string, unknown>) : ""))
             .filter(Boolean)
             .join("\n");
           if (textJoined) {
@@ -1022,12 +1051,52 @@ export class LoggerService {
   private writeChain: Promise<void> = Promise.resolve();
   private readonly requestSessionMap = new Map<string, string | null>();
   private static readonly MAX_REQUEST_SESSION_ENTRIES = 5000;
+  private readonly requestUsageEvents: Array<{ tsMs: number; kind: "openai" | "claudecode" }> = [];
+  private static readonly REQUEST_USAGE_WINDOW_MS = 2 * 60 * 1000;
+  private static readonly MAX_REQUEST_USAGE_EVENTS = 20000;
 
   public constructor(config: LoggingConfig) {
     this.config = config;
   }
 
+  public getRequestUsageMetrics(nowMs = Date.now()): RealtimeRequestUsageMetrics {
+    this.pruneRequestUsageEvents(nowMs);
+    const oneMinuteAgo = nowMs - 60_000;
+    const twoMinuteAgo = nowMs - LoggerService.REQUEST_USAGE_WINDOW_MS;
+    let openai1m = 0;
+    let openai2m = 0;
+    let claudeCode1m = 0;
+    let claudeCode2m = 0;
+
+    for (const event of this.requestUsageEvents) {
+      if (event.tsMs < twoMinuteAgo) {
+        continue;
+      }
+      if (event.kind === "openai") {
+        openai2m += 1;
+        if (event.tsMs >= oneMinuteAgo) {
+          openai1m += 1;
+        }
+        continue;
+      }
+      claudeCode2m += 1;
+      if (event.tsMs >= oneMinuteAgo) {
+        claudeCode1m += 1;
+      }
+    }
+
+    return {
+      generatedAt: new Date(nowMs).toISOString(),
+      openai1m,
+      openai2m,
+      claudeCode1m,
+      claudeCode2m,
+      sampledRequestRecords: this.requestUsageEvents.length
+    };
+  }
+
   public logRequest(payload: RequestLogPayload): void {
+    this.pushRequestUsageEvent(payload);
     if (!this.config.archiveRequests) {
       return;
     }
@@ -1116,6 +1185,58 @@ export class LoggerService {
       }
       this.requestSessionMap.delete(oldestKey);
     }
+  }
+
+  private pushRequestUsageEvent(payload: RequestLogPayload): void {
+    const kind = this.classifyRequestKind(payload);
+    if (!kind) {
+      return;
+    }
+    const tsMs = Date.parse(payload.ts);
+    const now = Date.now();
+    const normalizedTs = Number.isFinite(tsMs) ? tsMs : now;
+    this.requestUsageEvents.push({ tsMs: normalizedTs, kind });
+    this.pruneRequestUsageEvents(now);
+    if (this.requestUsageEvents.length > LoggerService.MAX_REQUEST_USAGE_EVENTS) {
+      this.requestUsageEvents.splice(0, this.requestUsageEvents.length - LoggerService.MAX_REQUEST_USAGE_EVENTS);
+    }
+  }
+
+  private pruneRequestUsageEvents(nowMs: number): void {
+    const minTs = nowMs - LoggerService.REQUEST_USAGE_WINDOW_MS;
+    while (this.requestUsageEvents.length > 0 && this.requestUsageEvents[0].tsMs < minTs) {
+      this.requestUsageEvents.shift();
+    }
+  }
+
+  private classifyRequestKind(payload: RequestLogPayload): "openai" | "claudecode" | "" {
+    const apiFormat = detectApiFormat(payload.path, payload.headers);
+    if (apiFormat === "openai") {
+      return "openai";
+    }
+    if (apiFormat === "anthropic") {
+      return "claudecode";
+    }
+    const path = String(payload.path || "").toLowerCase();
+    if (path.includes("/responses") || path.includes("/chat/completions") || path.includes("/embeddings") || path.includes("/completions")) {
+      return "openai";
+    }
+    if (path.includes("/messages") || path.includes("/complete")) {
+      return "claudecode";
+    }
+    const parsed = parseJsonIfPossible(payload.rawBody, payload.contentType);
+    const jsonBody = parsed.jsonBody;
+    if (jsonBody && typeof jsonBody === "object") {
+      const body = jsonBody as Record<string, unknown>;
+      const model = asString(body.model).toLowerCase();
+      if (model.includes("claude")) {
+        return "claudecode";
+      }
+      if (model.startsWith("gpt") || model.includes("o1") || model.includes("o3") || model.includes("o4")) {
+        return "openai";
+      }
+    }
+    return "";
   }
 
   private async appendRecord(record: LogRecord): Promise<void> {

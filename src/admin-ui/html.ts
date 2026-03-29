@@ -758,6 +758,8 @@ export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): s
     let logEventSource = null;
     let latestAllLogs = [];
     let latestVisibleLogs = [];
+    let usageMetrics = null;
+    let metricsFetching = false;
     let currentJsonText = "";
     let currentJsonRawText = "";
     let currentJsonValue = null;
@@ -1025,6 +1027,39 @@ export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): s
       const avgMs = durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0;
       const truncated = arr.filter((x) => Boolean(x.response?.truncated)).length;
       const parseErr = arr.filter((x) => x.request?.parseError || x.response?.parseError).length;
+      const nowMs = Date.now();
+      const oneMinuteAgo = nowMs - 60 * 1000;
+      const twoMinuteAgo = nowMs - 2 * 60 * 1000;
+      const classifyKind = (item) => {
+        const apiFormat = String(item?.apiFormat || "").toLowerCase();
+        if (apiFormat === "openai") {
+          return "openai";
+        }
+        if (apiFormat === "anthropic") {
+          return "claudecode";
+        }
+        const path = String(item?.path || "").toLowerCase();
+        const model = String(item?.model || "").toLowerCase();
+        if (path.includes("/responses") || path.includes("/chat/completions")) {
+          return "openai";
+        }
+        if (path.includes("/messages") || model.includes("claude")) {
+          return "claudecode";
+        }
+        return "";
+      };
+      const inWindow = (item, sinceMs) => {
+        const ts = Date.parse(String(item?.startedAt || ""));
+        return Number.isFinite(ts) && ts >= sinceMs;
+      };
+      const fallbackOpenai1m = arr.filter((x) => classifyKind(x) === "openai" && inWindow(x, oneMinuteAgo)).length;
+      const fallbackOpenai2m = arr.filter((x) => classifyKind(x) === "openai" && inWindow(x, twoMinuteAgo)).length;
+      const fallbackClaude1m = arr.filter((x) => classifyKind(x) === "claudecode" && inWindow(x, oneMinuteAgo)).length;
+      const fallbackClaude2m = arr.filter((x) => classifyKind(x) === "claudecode" && inWindow(x, twoMinuteAgo)).length;
+      const openai1m = typeof usageMetrics?.openai1m === "number" ? usageMetrics.openai1m : fallbackOpenai1m;
+      const openai2m = typeof usageMetrics?.openai2m === "number" ? usageMetrics.openai2m : fallbackOpenai2m;
+      const claude1m = typeof usageMetrics?.claudeCode1m === "number" ? usageMetrics.claudeCode1m : fallbackClaude1m;
+      const claude2m = typeof usageMetrics?.claudeCode2m === "number" ? usageMetrics.claudeCode2m : fallbackClaude2m;
       const wrap = byId("logOverview");
       wrap.innerHTML = [
         ["总日志", total],
@@ -1033,7 +1068,11 @@ export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): s
         ["处理中", pending],
         ["平均耗时(ms)", avgMs],
         ["响应截断", truncated],
-        ["解析错误", parseErr]
+        ["解析错误", parseErr],
+        ["OpenAI / 1分钟", openai1m],
+        ["OpenAI / 2分钟", openai2m],
+        ["ClaudeCode / 1分钟", claude1m],
+        ["ClaudeCode / 2分钟", claude2m]
       ].map((m) =>
         '<div class="metric-card"><div class="metric-label">' + escHtml(String(m[0])) + '</div><div class="metric-value">' + escHtml(String(m[1])) + "</div></div>"
       ).join("");
@@ -1140,6 +1179,228 @@ export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): s
       return unwrapJsonString(rawText, 12);
     }
 
+    function cloneJsonValue(value) {
+      if (Array.isArray(value)) {
+        return value.map((item) => cloneJsonValue(item));
+      }
+      if (value && typeof value === "object") {
+        const out = {};
+        Object.entries(value).forEach(([k, v]) => {
+          out[k] = cloneJsonValue(v);
+        });
+        return out;
+      }
+      return value;
+    }
+
+    function deepParseJsonValue(value, maxDepth) {
+      const depth = Number.isFinite(maxDepth) ? Math.max(0, Number(maxDepth)) : 6;
+      if (depth <= 0) {
+        return value;
+      }
+      if (typeof value === "string") {
+        const parsed = tryParseJsonText(value);
+        if (parsed === null) {
+          return value;
+        }
+        return deepParseJsonValue(parsed, depth - 1);
+      }
+      if (Array.isArray(value)) {
+        return value.map((item) => deepParseJsonValue(item, depth - 1));
+      }
+      if (value && typeof value === "object") {
+        const out = {};
+        Object.entries(value).forEach(([k, v]) => {
+          out[k] = deepParseJsonValue(v, depth - 1);
+        });
+        return out;
+      }
+      return value;
+    }
+
+    function parseSseTextPayload(rawText) {
+      if (typeof rawText !== "string" || rawText.indexOf("data:") < 0) {
+        return null;
+      }
+      const blocks = rawText.split(/\\r?\\n\\r?\\n/);
+      const items = [];
+      let eventCount = 0;
+      for (const block of blocks) {
+        if (!block || !block.trim()) continue;
+        const lines = block.split(/\\r?\\n/);
+        const dataLines = [];
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          dataLines.push(line.slice(5).trimStart());
+        }
+        if (!dataLines.length) continue;
+        eventCount += 1;
+        const payload = dataLines.join("\\n").trim();
+        if (!payload) continue;
+        if (payload === "[DONE]") {
+          continue;
+        }
+        const parsed = tryParseJsonText(payload);
+        items.push(parsed === null ? payload : parsed);
+      }
+      if (!eventCount) {
+        return null;
+      }
+      const parsedItems = deepParseJsonValue(items, 6);
+      return mergeSseItems(parsedItems);
+    }
+
+    function mergeChatCompletionsFromSse(items) {
+      let text = "";
+      let finishReason = null;
+      const toolCallsByIndex = new Map();
+      for (const item of items) {
+        if (!item || typeof item !== "object") continue;
+        const choices = Array.isArray(item.choices) ? item.choices : [];
+        if (!choices.length) continue;
+        const c0 = choices[0];
+        if (!c0 || typeof c0 !== "object") continue;
+        if (typeof c0.finish_reason === "string" && c0.finish_reason) {
+          finishReason = c0.finish_reason;
+        }
+        const delta = c0.delta && typeof c0.delta === "object" ? c0.delta : null;
+        if (!delta) continue;
+        if (typeof delta.content === "string") {
+          text += delta.content;
+        }
+        const toolCalls = Array.isArray(delta.tool_calls) ? delta.tool_calls : [];
+        for (const tc of toolCalls) {
+          if (!tc || typeof tc !== "object") continue;
+          const idx = Number(tc.index);
+          const fn = tc.function && typeof tc.function === "object" ? tc.function : null;
+          const curr = Number.isFinite(idx)
+            ? (toolCallsByIndex.get(idx) || { index: idx, id: null, type: "function", function: { name: "", arguments: "" } })
+            : { index: toolCallsByIndex.size, id: null, type: "function", function: { name: "", arguments: "" } };
+          if (typeof tc.id === "string" && tc.id) curr.id = tc.id;
+          if (fn && typeof fn.name === "string" && fn.name) curr.function.name = fn.name;
+          if (fn && typeof fn.arguments === "string" && fn.arguments) curr.function.arguments += fn.arguments;
+          if (Number.isFinite(idx)) {
+            toolCallsByIndex.set(idx, curr);
+          } else {
+            toolCallsByIndex.set(curr.index, curr);
+          }
+        }
+      }
+      const toolCalls = Array.from(toolCallsByIndex.values()).sort((a, b) => a.index - b.index);
+      if (!text && !toolCalls.length && !finishReason) {
+        return null;
+      }
+      return {
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: text || "",
+              ...(toolCalls.length ? { tool_calls: toolCalls } : {})
+            },
+            finish_reason: finishReason
+          }
+        ]
+      };
+    }
+
+    function mergeAnthropicFromSse(items) {
+      const blocks = [];
+      const toolByIndex = new Map();
+      let stopReason = null;
+
+      for (const item of items) {
+        if (!item || typeof item !== "object") continue;
+        const type = typeof item.type === "string" ? item.type : "";
+        if ((type === "message_stop" || type === "message_delta") && typeof item.stop_reason === "string" && item.stop_reason) {
+          stopReason = item.stop_reason;
+        }
+        if (type === "content_block_start" && item.content_block && typeof item.content_block === "object") {
+          const idx = Number(item.index);
+          const cb = item.content_block;
+          if (!Number.isFinite(idx)) continue;
+          if (cb.type === "text") {
+            blocks[idx] = { type: "text", text: typeof cb.text === "string" ? cb.text : "" };
+          } else if (cb.type === "tool_use") {
+            const inputInitial = cb.input && typeof cb.input === "object" ? cb.input : {};
+            blocks[idx] = {
+              type: "tool_use",
+              id: typeof cb.id === "string" ? cb.id : null,
+              name: typeof cb.name === "string" ? cb.name : "unknown_tool",
+              input: inputInitial
+            };
+            toolByIndex.set(idx, { partialJson: "", inputInitial });
+          }
+        } else if (type === "content_block_delta") {
+          const idx = Number(item.index);
+          if (!Number.isFinite(idx) || !item.delta || typeof item.delta !== "object") continue;
+          const delta = item.delta;
+          if (delta.type === "text_delta" && typeof delta.text === "string") {
+            const curr = blocks[idx];
+            if (curr && curr.type === "text") {
+              curr.text += delta.text;
+            } else {
+              blocks[idx] = { type: "text", text: delta.text };
+            }
+          } else if (delta.type === "input_json_delta" && typeof delta.partial_json === "string") {
+            const curr = toolByIndex.get(idx) || { partialJson: "", inputInitial: {} };
+            curr.partialJson += delta.partial_json;
+            toolByIndex.set(idx, curr);
+          }
+        } else if (type === "content_block_stop") {
+          const idx = Number(item.index);
+          if (!Number.isFinite(idx)) continue;
+          const curr = blocks[idx];
+          const tool = toolByIndex.get(idx);
+          if (curr && curr.type === "tool_use" && tool) {
+            if (tool.partialJson) {
+              try {
+                curr.input = JSON.parse(tool.partialJson);
+              } catch {
+                curr.input = tool.partialJson;
+              }
+            }
+          }
+        }
+      }
+
+      const content = blocks.filter(Boolean);
+      if (!content.length && !stopReason) {
+        return null;
+      }
+      return {
+        type: "message",
+        role: "assistant",
+        content,
+        stop_reason: stopReason
+      };
+    }
+
+    function mergeSseItems(items) {
+      if (!Array.isArray(items) || !items.length) {
+        return null;
+      }
+      if (items.length === 1) {
+        return items[0] ?? null;
+      }
+
+      for (let i = items.length - 1; i >= 0; i -= 1) {
+        const item = items[i];
+        if (!item || typeof item !== "object") continue;
+        if (item.response && typeof item.response === "object") {
+          return item.response;
+        }
+      }
+
+      const chat = mergeChatCompletionsFromSse(items);
+      if (chat) return chat;
+
+      const anthropic = mergeAnthropicFromSse(items);
+      if (anthropic) return anthropic;
+
+      return items[items.length - 1] ?? null;
+    }
+
     function toNativeBodyView(record) {
       const body = record?.body;
       if (!body || typeof body !== "object") {
@@ -1156,35 +1417,78 @@ export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): s
       return null;
     }
 
+    function toMergedSseJson(record, requestBodyView, nativeResponseBody) {
+      const reqHasSseFlag =
+        requestBodyView &&
+        typeof requestBodyView === "object" &&
+        (requestBodyView.sse === true || requestBodyView.stream === true);
+
+      if (record && record.isSse) {
+        const sse = record.sse;
+        if (sse && typeof sse === "object") {
+          const events = Array.isArray(sse.events) ? sse.events : [];
+          const items = [];
+          for (const ev of events) {
+            const data = typeof ev?.data === "string" ? ev.data.trim() : "";
+            if (!data) continue;
+            if (data === "[DONE]") {
+              continue;
+            }
+            const parsed = tryParseJsonText(data);
+            items.push(parsed === null ? data : parsed);
+          }
+          const parsedItems = deepParseJsonValue(items, 6);
+          return mergeSseItems(parsedItems);
+        }
+      }
+
+      if (reqHasSseFlag && typeof nativeResponseBody === "string") {
+        return parseSseTextPayload(nativeResponseBody);
+      }
+      return null;
+    }
+
     function toRawArchiveJson(detail, fallbackRequestId) {
       const req = detail?.request || null;
       const res = detail?.response || null;
+      const requestBodyView = req ? toNativeBodyView(req) : null;
+      const responseBodyView = res ? toNativeBodyView(res) : null;
+      const mergedSse = toMergedSseJson(res, requestBodyView, responseBodyView);
+      const requestView = req ? cloneJsonValue(req) : null;
+      const responseView = res ? cloneJsonValue(res) : null;
+
+      if (requestView && requestView.body && typeof requestView.body === "object" && requestBodyView !== null) {
+        if (Object.prototype.hasOwnProperty.call(requestView.body, "text")) {
+          requestView.body.text = requestBodyView;
+        } else {
+          requestView.body = requestBodyView;
+        }
+      }
+
+      if (responseView && responseView.body && typeof responseView.body === "object") {
+        if (mergedSse !== null) {
+          if (Object.prototype.hasOwnProperty.call(responseView.body, "text")) {
+            responseView.body.text = mergedSse;
+          } else {
+            responseView.body = mergedSse;
+          }
+        } else if (responseBodyView !== null) {
+          if (Object.prototype.hasOwnProperty.call(responseView.body, "text")) {
+            responseView.body.text = responseBodyView;
+          } else {
+            responseView.body = responseBodyView;
+          }
+        }
+      }
+      if (responseView && responseView.isSse === true && Object.prototype.hasOwnProperty.call(responseView, "sse")) {
+        delete responseView.sse;
+      }
+
       return {
         requestId: req?.requestId || res?.requestId || fallbackRequestId || null,
         statusCode: typeof res?.statusCode === "number" ? res.statusCode : null,
-        request: req
-          ? {
-              capturedAt: req.capturedAt || null,
-              method: req.method || null,
-              path: req.path || null,
-              apiFormat: req.apiFormat || null,
-              contentType: req.contentType || null,
-              body: toNativeBodyView(req)
-            }
-          : null,
-        response: res
-          ? {
-              capturedAt: res.capturedAt || null,
-              method: res.method || null,
-              path: res.path || null,
-              apiFormat: res.apiFormat || null,
-              contentType: res.contentType || null,
-              statusCode: typeof res.statusCode === "number" ? res.statusCode : null,
-              isSse: Boolean(res.isSse),
-              sse: res.sse && typeof res.sse === "object" ? res.sse : undefined,
-              body: toNativeBodyView(res)
-            }
-          : null
+        request: requestView,
+        response: responseView
       };
     }
 
@@ -1439,6 +1743,26 @@ export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): s
       setLogState("已连接", true);
     }
 
+    async function fetchUsageMetricsOnce() {
+      if (metricsFetching) {
+        return;
+      }
+      metricsFetching = true;
+      try {
+        const r = await fetch(withApiFormat("/__admin/api/logs/metrics"));
+        if (!r.ok) {
+          throw new Error("load metrics failed");
+        }
+        const data = await r.json();
+        usageMetrics = data && data.item ? data.item : null;
+      } catch {
+        // keep previous metrics; overview has local fallback
+      } finally {
+        metricsFetching = false;
+        renderOverview(latestVisibleLogs);
+      }
+    }
+
     function setCleanupButtonsDisabled(next) {
       byId("logCleanupFailedBtn").disabled = next;
       byId("logCleanupAllBtn").disabled = next;
@@ -1497,6 +1821,7 @@ export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): s
         try {
           const payload = JSON.parse(ev.data);
           renderLogs(payload.items || []);
+          void fetchUsageMetricsOnce();
           setLogState("实时更新中", true);
         } catch {
           setLogState("解析失败", false);
@@ -1630,6 +1955,10 @@ export function renderAdminHtml(view: "all" | "openai" | "anthropic" = "all"): s
     });
     void fetchLogsOnce();
     connectLogStream();
+    void fetchUsageMetricsOnce();
+    setInterval(() => {
+      void fetchUsageMetricsOnce();
+    }, 1000);
   </script>
 </body>
 </html>`;

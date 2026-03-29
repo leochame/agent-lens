@@ -48,8 +48,10 @@ test("buildLoopStateSnapshot uses default limits when query values are missing",
 
 test("parseTaskId handles decoding safely", () => {
   assert.equal(parseTaskId("/__loop/api/tasks/simple-id/run", "run"), "simple-id");
+  assert.equal(parseTaskId("/__loop/api/tasks/simple-id/resume", "resume"), "simple-id");
   assert.equal(parseTaskId("/__loop/api/tasks/id%20with%20space/toggle", "toggle"), "id with space");
   assert.equal(parseTaskId("/__loop/api/tasks/simple-id/stop", "stop"), "simple-id");
+  assert.equal(parseTaskId("/__loop/api/tasks/simple-id/stop-after-round", "stop-after-round"), "simple-id");
   assert.equal(parseTaskId("/__loop/api/tasks/%E0%A4%A/run", "run"), null);
   assert.equal(parseTaskId("/__loop/api/tasks/not-match", "run"), null);
 });

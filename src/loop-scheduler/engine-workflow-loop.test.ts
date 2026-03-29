@@ -434,3 +434,125 @@ test("continueOnError failure reports explicit first-failure location", async ()
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("workflow failure records checkpoint and resumeNow continues from failed step", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-resume-"));
+  const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
+  await scheduler.init();
+  try {
+    const calls: string[] = [];
+    let step2Failures = 0;
+    (scheduler as unknown as {
+      executeCommand: (
+        command: string,
+        cwd: string,
+        timeoutSec: number,
+        envPatch?: Record<string, string>
+      ) => Promise<{ status: "success" | "failed"; exitCode: number; stdout: string; stderr: string; error: string | null }>;
+    }).executeCommand = async (command) => {
+      calls.push(command);
+      if (command.includes("[Step 2/2]") && step2Failures === 0) {
+        step2Failures += 1;
+        return {
+          status: "failed",
+          exitCode: 9,
+          stdout: "",
+          stderr: "step2 failed once",
+          error: "step2 failed once"
+        };
+      }
+      return {
+        status: "success",
+        exitCode: 0,
+        stdout: "ok",
+        stderr: "",
+        error: null
+      };
+    };
+
+    const task = await scheduler.createTask({
+      name: "workflow-resume-checkpoint",
+      runner: "custom",
+      prompt: "resume checkpoint",
+      command: 'echo "{prompt}"',
+      workflowSteps: [
+        { name: "step-1", enabled: true },
+        { name: "step-2", enabled: true }
+      ],
+      intervalSec: 300
+    });
+
+    const firstRun = await scheduler.runNow(task.id);
+    assert.equal(firstRun.status, "failed");
+    const afterFailure = scheduler.listTasks().find((item) => item.id === task.id);
+    assert.equal(afterFailure?.workflowResumeStepIndex, 2);
+
+    const resumedRun = await scheduler.resumeNow(task.id);
+    assert.equal(resumedRun.status, "success");
+    const afterResume = scheduler.listTasks().find((item) => item.id === task.id);
+    assert.equal(afterResume?.workflowResumeStepIndex, null);
+
+    const step1Calls = calls.filter((cmd) => cmd.includes("[Step 1/2]")).length;
+    const step2Calls = calls.filter((cmd) => cmd.includes("[Step 2/2]")).length;
+    assert.equal(step1Calls, 1);
+    assert.equal(step2Calls, 2);
+  } finally {
+    scheduler.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("workflow loop-from-start can stop after current round completes", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-stop-after-round-"));
+  const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
+  await scheduler.init();
+  try {
+    const calls: string[] = [];
+    (scheduler as unknown as {
+      executeCommand: (
+        command: string,
+        cwd: string,
+        timeoutSec: number,
+        envPatch?: Record<string, string>
+      ) => Promise<{ status: "success"; exitCode: number; stdout: string; stderr: string; error: null }>;
+    }).executeCommand = async (command) => {
+      calls.push(command);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return {
+        status: "success",
+        exitCode: 0,
+        stdout: "ok",
+        stderr: "",
+        error: null
+      };
+    };
+
+    const task = await scheduler.createTask({
+      name: "workflow-stop-after-round",
+      runner: "custom",
+      prompt: "stop after round",
+      command: 'echo "{prompt}"',
+      workflowSteps: [
+        { name: "step-1", enabled: true },
+        { name: "step-2", enabled: true }
+      ],
+      workflowLoopFromStart: true,
+      intervalSec: 300
+    });
+
+    const pending = scheduler.runNow(task.id);
+    while (calls.length < 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const stopInfo = scheduler.stopTask(task.id, "stop requested after current round", { afterRound: true });
+    const run = await pending;
+
+    assert.equal(stopInfo.deferred, true);
+    assert.equal(run.status, "cancelled");
+    assert.equal(run.error, "stop requested after current round");
+    assert.equal(calls.length, 2);
+  } finally {
+    scheduler.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});

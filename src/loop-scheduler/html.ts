@@ -1215,6 +1215,17 @@ export function renderLoopHtml(): string {
       const stopButton = isRunning || isQueued
         ? ('<button class="warn" data-act="stop" data-id="' + esc(item.id) + '">' + (isRunning ? "停止本轮" : "取消排队") + '</button>')
         : "";
+      const gracefulStopButton = isRunning && item.workflowLoopFromStart
+        ? ('<button class="ghost" data-act="stopAfterRound" data-id="' + esc(item.id) + '">本轮完成后停止</button>')
+        : "";
+      const checkpointStepIndex = Number(item.workflowResumeStepIndex);
+      const hasCheckpoint = Number.isFinite(checkpointStepIndex) && checkpointStepIndex >= 1;
+      const checkpointText = hasCheckpoint
+        ? ("断点: 第 " + checkpointStepIndex + " 步 | 更新时间: " + formatTime(item.workflowResumeUpdatedAt) + (item.workflowResumeReason ? (" | 原因: " + item.workflowResumeReason) : ""))
+        : "断点: 无";
+      const resumeButton = (!isActive && hasCheckpoint)
+        ? ('<button class="ghost" data-act="resume" data-id="' + esc(item.id) + '">断点恢复</button>')
+        : "";
       const toggleLabel = item.enabled
         ? ((isRunning || isQueued) ? "停用(并停止)" : "停用")
         : "启用";
@@ -1237,11 +1248,14 @@ export function renderLoopHtml(): string {
         + '</div></div>'
         + '<div class="muted" style="margin-top:6px;">path: ' + esc(item.cwd || "(默认)")
         + ' | 执行方式: ' + esc(loopText) + ' | 会话: ' + esc(sessionText) + ' | 权限: ' + esc(accessText) + ' | 最近执行: ' + esc(formatTime(item.lastRunAt)) + '</div>'
+        + '<div class="muted" style="margin-top:4px;">' + esc(checkpointText) + '</div>'
         + '<div class="muted" style="margin-top:4px;">状态提示: ' + esc(runtimeHint) + '</div>'
         + '<pre style="margin-top:8px;">workflow: ' + esc(stepDetail) + '\\nprompt: ' + esc(item.prompt) + '\\ncommand: ' + esc(cmd) + '</pre>'
         + '<div class="actions">'
         + '<button class="' + runClass + '" data-act="run" data-id="' + esc(item.id) + '">' + runLabel + '</button>'
+        + resumeButton
         + stopButton
+        + gracefulStopButton
         + '<button class="ghost" data-act="edit" data-id="' + esc(item.id) + '"' + editDisabled + '>' + editLabel + '</button>'
         + '<button class="warn" data-act="clone" data-id="' + esc(item.id) + '">复制到表单</button>'
         + '<button class="ghost" data-act="toggle" data-id="' + esc(item.id) + '">' + toggleLabel + '</button>'
@@ -1619,9 +1633,11 @@ export function renderLoopHtml(): string {
         ? "删除中..."
         : (act === "run"
           ? (runtimeState === "running" ? "重启中..." : (runtimeState === "queued" ? "重排中..." : "执行中..."))
+          : (act === "resume"
+            ? "恢复中..."
           : (act === "toggle"
             ? "切换中..."
-            : (act === "stop" ? "关闭中..." : "")));
+            : ((act === "stop" || act === "stopAfterRound") ? "关闭中..." : ""))));
       await withButtonBusy(
         buttonEl,
         busyText,
@@ -1647,7 +1663,52 @@ export function renderLoopHtml(): string {
                 const reason = diagnosis || run.error || "执行失败";
                 msg(actionName + "完成：失败，" + reason, true);
               } else {
-                msg(actionName + "完成", false);
+                msg(actionName + "已触发，正在后台执行", false);
+              }
+            } else if (act === "resume") {
+              if (!taskItem) {
+                msg("任务不存在或已刷新", true);
+                return;
+              }
+              if (runtimeState === "running" || runtimeState === "queued") {
+                msg("任务正在运行/排队，请先停止后再恢复。", true);
+                return;
+              }
+              const hasCheckpoint = Number.isFinite(Number(taskItem.workflowResumeStepIndex))
+                && Number(taskItem.workflowResumeStepIndex) >= 1;
+              if (!hasCheckpoint) {
+                msg("当前任务没有可恢复的断点。", true);
+                return;
+              }
+              const suggestStep = Number(taskItem.workflowResumeStepIndex);
+              const raw = window.prompt("输入恢复阶段序号（留空表示使用断点阶段）", String(suggestStep));
+              if (raw === null) {
+                return;
+              }
+              const value = String(raw || "").trim();
+              let payload = null;
+              if (value) {
+                const n = Number(value);
+                if (!Number.isFinite(n) || n < 1 || Math.floor(n) !== n) {
+                  msg("阶段序号必须是 >= 1 的整数。", true);
+                  return;
+                }
+                payload = { stepIndex: n };
+              }
+              const data = await api("/__loop/api/tasks/" + id + "/resume", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify(payload || {})
+              });
+              const run = data && data.item ? data.item : null;
+              if (run && run.status === "success") {
+                msg("断点恢复完成：成功", false);
+              } else if (run) {
+                const diagnosis = diagnoseRun(run);
+                const reason = diagnosis || run.error || "恢复失败";
+                msg("断点恢复完成：失败，" + reason, true);
+              } else {
+                msg("断点恢复已触发，正在后台执行", false);
               }
             } else if (act === "edit") {
               const item = cachedTasks.find(function (x) { return x.id === id; });
@@ -1698,6 +1759,20 @@ export function renderLoopHtml(): string {
                 msg(runtimeState === "queued" ? "任务已取消排队" : "任务已停止本轮执行", false);
               } else {
                 msg("任务当前未在运行或排队", false);
+              }
+            } else if (act === "stopAfterRound") {
+              if (!taskItem || !taskItem.workflowLoopFromStart) {
+                msg("当前任务不是从头循环模式。", true);
+                return;
+              }
+              const data = await api("/__loop/api/tasks/" + id + "/stop-after-round", { method: "POST" });
+              const item = data && data.item ? data.item : null;
+              if (item && item.deferred) {
+                msg("已设置：当前轮次全部完成后自动停止。", false);
+              } else if (item && item.running) {
+                msg("任务正在运行，但无法延迟停止，已忽略请求。", true);
+              } else {
+                msg("任务当前未在运行", false);
               }
             } else if (act === "delete") {
               const confirmText = runtimeState === "running" || runtimeState === "queued"

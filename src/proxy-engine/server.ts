@@ -55,6 +55,11 @@ type RuntimeState = {
   loopScheduler: LoopScheduler;
 };
 
+export type StartedServer = {
+  close: () => Promise<void>;
+  shutdownLoop: () => void;
+};
+
 export function parseOptionalLimit(value: unknown, fallback: number, min: number, max: number): number {
   if (value === undefined || value === null) {
     return fallback;
@@ -143,6 +148,12 @@ async function handleAdmin(req: IncomingMessage, res: ServerResponse, state: Run
     const apiFormat = parseApiFormat(parsed.searchParams.get("apiFormat"));
     const items = await loadPairedLogs(state.config.logging.filePath, limit, apiFormat);
     writeJson(res, 200, { items, apiFormat, generatedAt: new Date().toISOString() });
+    return true;
+  }
+
+  if (req.method === "GET" && parsed.pathname === "/__admin/api/logs/metrics") {
+    const item = state.logger.getRequestUsageMetrics();
+    writeJson(res, 200, { item, generatedAt: new Date().toISOString() });
     return true;
   }
 
@@ -273,7 +284,7 @@ async function handleAdmin(req: IncomingMessage, res: ServerResponse, state: Run
   return true;
 }
 
-export function parseTaskId(pathname: string, action: "run" | "toggle" | "stop" | null): string | null {
+export function parseTaskId(pathname: string, action: "run" | "resume" | "toggle" | "stop" | "stop-after-round" | null): string | null {
   const suffix = action ? `/${action}` : "";
   const match = pathname.match(new RegExp(`^/__loop/api/tasks/([^/]+)${suffix}$`));
   if (!match || !match[1]) {
@@ -528,13 +539,79 @@ async function handleLoop(req: IncomingMessage, res: ServerResponse, state: Runt
       writeJson(res, 404, { error: "Not found" });
       return true;
     }
+    if (!state.loopScheduler.hasTask(taskId)) {
+      writeJson(res, 404, { error: "task not found" });
+      return true;
+    }
+    const shouldWait = (() => {
+      const raw = String(parsed.searchParams.get("wait") || "").trim().toLowerCase();
+      return raw === "1" || raw === "true" || raw === "yes";
+    })();
     try {
-      const run = await state.loopScheduler.runNow(taskId);
-      writeJson(res, 200, { item: run });
+      if (shouldWait) {
+        const run = await state.loopScheduler.runNow(taskId);
+        writeJson(res, 200, { item: run });
+        return true;
+      }
+      void state.loopScheduler.runNow(taskId).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[loop] async run failed taskId=${taskId} error=${message}`);
+      });
+      writeJson(res, 202, { ok: true, accepted: true, async: true });
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      writeJson(res, 400, { error: message });
+      const status = message === "task not found" ? 404 : 400;
+      writeJson(res, status, { error: message });
+      return true;
+    }
+  }
+
+  if (req.method === "POST" && parsed.pathname.startsWith("/__loop/api/tasks/") && parsed.pathname.endsWith("/resume")) {
+    const taskId = parseTaskId(parsed.pathname, "resume");
+    if (!taskId) {
+      writeJson(res, 404, { error: "Not found" });
+      return true;
+    }
+    let stepIndex: number | null | undefined = undefined;
+    if ((req.headers["content-length"] && req.headers["content-length"] !== "0")
+      || String(req.headers["content-type"] || "").includes("application/json")) {
+      const body = await collectBody(req);
+      if (body.length > 0) {
+        try {
+          const payload = JSON.parse(body.toString("utf8")) as { stepIndex?: number | null };
+          stepIndex = payload.stepIndex;
+        } catch {
+          writeJson(res, 400, { error: "Invalid JSON body" });
+          return true;
+        }
+      }
+    }
+    if (!state.loopScheduler.hasTask(taskId)) {
+      writeJson(res, 404, { error: "task not found" });
+      return true;
+    }
+    const shouldWait = (() => {
+      const raw = String(parsed.searchParams.get("wait") || "").trim().toLowerCase();
+      return raw === "1" || raw === "true" || raw === "yes";
+    })();
+    try {
+      const resolvedStepIndex = state.loopScheduler.resolveResumeStepIndex(taskId, stepIndex);
+      if (shouldWait) {
+        const run = await state.loopScheduler.resumeNow(taskId, resolvedStepIndex);
+        writeJson(res, 200, { item: run });
+        return true;
+      }
+      void state.loopScheduler.resumeNow(taskId, resolvedStepIndex).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[loop] async resume failed taskId=${taskId} error=${message}`);
+      });
+      writeJson(res, 202, { ok: true, accepted: true, async: true, stepIndex: resolvedStepIndex });
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const status = message === "task not found" ? 404 : 400;
+      writeJson(res, status, { error: message });
       return true;
     }
   }
@@ -578,6 +655,28 @@ async function handleLoop(req: IncomingMessage, res: ServerResponse, state: Runt
     }
   }
 
+  if (req.method === "POST" && parsed.pathname.startsWith("/__loop/api/tasks/") && parsed.pathname.endsWith("/stop-after-round")) {
+    const taskId = parseTaskId(parsed.pathname, "stop-after-round");
+    if (!taskId) {
+      writeJson(res, 404, { error: "Not found" });
+      return true;
+    }
+    const exists = state.loopScheduler.listTasks().some((item) => item.id === taskId);
+    if (!exists) {
+      writeJson(res, 404, { error: "task not found" });
+      return true;
+    }
+    try {
+      const item = state.loopScheduler.stopTask(taskId, "stop requested after current round", { afterRound: true });
+      writeJson(res, 200, { item });
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      writeJson(res, 400, { error: message });
+      return true;
+    }
+  }
+
   if (req.method === "DELETE" && parsed.pathname.startsWith("/__loop/api/tasks/")) {
     const taskId = parseTaskId(parsed.pathname, null);
     if (!taskId) {
@@ -600,7 +699,7 @@ async function handleLoop(req: IncomingMessage, res: ServerResponse, state: Runt
   return true;
 }
 
-export function startServer(config: AppConfig, configPath: string): void {
+export function startServer(config: AppConfig, configPath: string): StartedServer {
   const loopScheduler = new LoopScheduler(join(dirname(configPath), "loop-tasks.json"));
   void loopScheduler.init().catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
@@ -698,4 +797,17 @@ export function startServer(config: AppConfig, configPath: string): void {
       `[agent-lens] listening on http://${config.listen.host}:${config.listen.port} defaultProvider=${config.routing.defaultProvider}`
     );
   });
+
+  return {
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      }),
+    shutdownLoop: () => {
+      loopScheduler.shutdown();
+      for (const task of loopScheduler.listTasks()) {
+        loopScheduler.stopTask(task.id, "scheduler shutting down");
+      }
+    }
+  };
 }

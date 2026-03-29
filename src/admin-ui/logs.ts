@@ -46,6 +46,15 @@ type RawLogRecord = {
 
 export type LogCleanupScope = "failed" | "all";
 
+export type RequestUsageMetrics = {
+  generatedAt: string;
+  openai1m: number;
+  openai2m: number;
+  claudeCode1m: number;
+  claudeCode2m: number;
+  sampledRequestRecords: number;
+};
+
 export type PairedLogItem = {
   logId: string;
   requestId: string;
@@ -153,6 +162,87 @@ function shouldIncludeRecord(record: RawLogRecord, apiFormat: ApiFormat | "all")
     return false;
   }
   return matchesApiFormat(record.apiFormat, apiFormat);
+}
+
+function classifyRequestKind(record: RawLogRecord): "openai" | "claudecode" | "" {
+  const format = String(record.apiFormat || "").toLowerCase();
+  if (format === "openai") {
+    return "openai";
+  }
+  if (format === "anthropic") {
+    return "claudecode";
+  }
+  const path = String(record.path || "").toLowerCase();
+  const model = String(record.model || "").toLowerCase();
+  if (path.includes("/responses") || path.includes("/chat/completions")) {
+    return "openai";
+  }
+  if (path.includes("/messages") || model.includes("claude")) {
+    return "claudecode";
+  }
+  return "";
+}
+
+export async function loadRequestUsageMetrics(logPath: string): Promise<RequestUsageMetrics> {
+  const now = Date.now();
+  const oneMinuteAgo = now - 60_000;
+  const twoMinuteAgo = now - 120_000;
+  const files = getLogFiles(logPath);
+  const contents = await Promise.all(files.map(async (file) => {
+    try {
+      return await readFile(file, "utf8");
+    } catch {
+      return "";
+    }
+  }));
+  const merged = contents.filter(Boolean).join("\n");
+  const lines = takeTail(merged.split(/\r?\n/).filter(Boolean), 12_000);
+  const seenRequestIds = new Set<string>();
+  let sampledRequestRecords = 0;
+  let openai1m = 0;
+  let openai2m = 0;
+  let claudeCode1m = 0;
+  let claudeCode2m = 0;
+
+  for (const line of lines) {
+    const record = parseRecord(line);
+    if (!record || record.type !== "request" || !record.requestId) {
+      continue;
+    }
+    if (seenRequestIds.has(record.requestId)) {
+      continue;
+    }
+    seenRequestIds.add(record.requestId);
+    sampledRequestRecords += 1;
+    const ts = toMs(record.ts || null);
+    if (ts == null || ts < twoMinuteAgo) {
+      continue;
+    }
+    const kind = classifyRequestKind(record);
+    if (!kind) {
+      continue;
+    }
+    if (kind === "openai") {
+      openai2m += 1;
+      if (ts >= oneMinuteAgo) {
+        openai1m += 1;
+      }
+      continue;
+    }
+    claudeCode2m += 1;
+    if (ts >= oneMinuteAgo) {
+      claudeCode1m += 1;
+    }
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    openai1m,
+    openai2m,
+    claudeCode1m,
+    claudeCode2m,
+    sampledRequestRecords
+  };
 }
 
 export async function loadPairedLogs(logPath: string, limit = 80, apiFormat: ApiFormat | "all" = "all"): Promise<PairedLogItem[]> {
@@ -280,7 +370,6 @@ export async function loadPairedLogs(logPath: string, limit = 80, apiFormat: Api
   }
 
   const items = Array.from(byRequestId.values())
-    .filter((item) => typeof item.statusCode === "number")
     .map((item) => {
       const startedMs = toMs(item.startedAt);
       const endedMs = toMs(item.endedAt);

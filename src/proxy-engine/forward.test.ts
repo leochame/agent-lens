@@ -167,3 +167,79 @@ test("forwardRequest rejects when upstream response aborts mid-stream", async ()
     await closeServer(upstream);
   }
 });
+
+test("forwardRequest retries once when upstream responds with retryable error", async () => {
+  let attempt = 0;
+  const upstream = http.createServer((_req, res) => {
+    attempt += 1;
+    if (attempt === 1) {
+      res.writeHead(502, { "content-type": "application/json" });
+      res.end('{"error":"temporary"}');
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end('{"ok":true,"attempt":2}');
+  });
+
+  const downstream = http.createServer((req: IncomingMessage, res: ServerResponse) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+    req.on("end", async () => {
+      const decision: RoutingDecision = {
+        providerName: "openai",
+        provider: { baseURL: `http://127.0.0.1:${upstreamPort}` },
+        targetPathWithQuery: req.url || "/"
+      };
+      try {
+        await forwardRequest({
+          req,
+          res,
+          body: Buffer.concat(chunks),
+          decision,
+          timeoutMs: 2000,
+          maxCaptureBytes: 1024
+        });
+      } catch (error) {
+        res.writeHead(502, { "content-type": "text/plain" });
+        res.end(error instanceof Error ? error.message : String(error));
+      }
+    });
+  });
+
+  const upstreamPort = await listen(upstream);
+  const downstreamPort = await listen(downstream);
+  try {
+    const response = await new Promise<{ body: string; upstreamAttempts: string }>((resolve, reject) => {
+      const req = http.request(
+        {
+          method: "POST",
+          host: "127.0.0.1",
+          port: downstreamPort,
+          path: "/v1/chat/completions",
+          headers: { "content-type": "application/json", connection: "close" }
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          const upstreamAttempts = String(res.headers["x-agentlens-upstream-attempts"] || "");
+          res.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+          res.on("end", () =>
+            resolve({
+              body: Buffer.concat(chunks).toString("utf8"),
+              upstreamAttempts
+            })
+          );
+        }
+      );
+      req.on("error", reject);
+      req.write('{"hello":"retry"}');
+      req.end();
+    });
+
+    assert.equal(attempt, 2);
+    assert.equal(response.body, '{"ok":true,"attempt":2}');
+    assert.equal(response.upstreamAttempts, "2");
+  } finally {
+    await closeServer(downstream);
+    await closeServer(upstream);
+  }
+});

@@ -19,16 +19,16 @@ providers:
       value: sk-K37VK2NWCTPCUMut6JemgfVj4XKITJ74WmvJ4n4knWGz6EtC
     pathRewrite: []
   provider_2:
-    baseURL: https://aixj.vip
+    baseURL: https://f.sillydream.top/v1
     authMode:
       type: inject
       header: authorization
-      value: sk-1b41e615614e1dbba4a4fb0e8920f71dfd0e8d2205482ff33c0ba4af836f3fa5
+      value: sk-Fn3MgyltqyK5GS4sX0eoGIVP3LxUXi8GHizS2OfCiFAKY9Gw
       valuePrefix: "Bearer "
     pathRewrite: []
 logging:
   filePath: ./logs/requests.jsonl
-  archiveRequests: true
+  archiveRequests: false
   maxArchiveBodyBytes: 0
   redactHeaders:
     - authorization

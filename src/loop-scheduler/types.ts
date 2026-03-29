@@ -23,6 +23,9 @@ export type LoopTask = {
   workflowLoopFromStart: boolean;
   workflowSharedSession: boolean;
   workflowFullAccess: boolean;
+  workflowResumeStepIndex: number | null;
+  workflowResumeUpdatedAt: string | null;
+  workflowResumeReason: string | null;
   intervalSec: number;
   // Legacy compatibility field. Runtime does not enforce task timeout.
   timeoutSec: number;

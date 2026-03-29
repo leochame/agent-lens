@@ -30,6 +30,18 @@ function parseBoundedNumber(value: unknown, min: number, max: number): number | 
   return clamp(n, min, max);
 }
 
+function normalizeOptionalPositiveInt(value: unknown): number | null {
+  if (value == null) {
+    return null;
+  }
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return null;
+  }
+  const rounded = Math.floor(num);
+  return rounded >= 1 ? rounded : null;
+}
+
 function normalizeIsoOrFallback(value: unknown, fallback: string): string {
   const text = String(value ?? "").trim();
   if (!text) {
@@ -315,6 +327,10 @@ function normalizeLoadedTask(raw: LoopTask): LoopTask {
   const workflowLoopFromStart = parseOptionalBoolean((raw as Partial<LoopTask>).workflowLoopFromStart);
   const workflowSharedSession = parseOptionalBoolean((raw as Partial<LoopTask>).workflowSharedSession);
   const workflowFullAccess = parseOptionalBoolean((raw as Partial<LoopTask>).workflowFullAccess);
+  const workflowResumeStepIndex = normalizeOptionalPositiveInt((raw as Partial<LoopTask>).workflowResumeStepIndex);
+  const workflowResumeUpdatedAt = normalizeOptionalIso((raw as Partial<LoopTask>).workflowResumeUpdatedAt);
+  const workflowResumeReasonRaw = (raw as Partial<LoopTask>).workflowResumeReason;
+  const workflowResumeReason = workflowResumeReasonRaw == null ? null : String(workflowResumeReasonRaw).trim() || null;
   const intervalSec = parseBoundedNumber((raw as Partial<LoopTask>).intervalSec, 5, 86400) ?? 300;
   const timeoutSec = 0;
   const enabled = parseOptionalBoolean((raw as Partial<LoopTask>).enabled) ?? true;
@@ -337,7 +353,10 @@ function normalizeLoadedTask(raw: LoopTask): LoopTask {
     workflowCarryContext: false,
     workflowLoopFromStart: workflowLoopFromStart ?? false,
     workflowSharedSession: workflowSharedSession ?? true,
-    workflowFullAccess: workflowFullAccess ?? false
+    workflowFullAccess: workflowFullAccess ?? false,
+    workflowResumeStepIndex,
+    workflowResumeUpdatedAt,
+    workflowResumeReason
   };
 }
 
@@ -383,6 +402,7 @@ type RunTaskOptions = {
   persistTaskState: boolean;
   recordRun: boolean;
   restartIfRunning?: boolean;
+  resumeStepIndex?: number | null;
 };
 
 type QueuedRun = {
@@ -419,6 +439,7 @@ const LIVE_HEARTBEAT_STALE_SEC = 30;
 type RunningTaskControl = {
   runId: string;
   cancelReason: string | null;
+  stopAfterRoundReason: string | null;
   child: ChildProcessWithoutNullStreams | null;
 };
 
@@ -555,6 +576,9 @@ export class LoopScheduler {
       workflowLoopFromStart: normalized.workflowLoopFromStart ?? false,
       workflowSharedSession: normalized.workflowSharedSession ?? true,
       workflowFullAccess: normalized.workflowFullAccess ?? false,
+      workflowResumeStepIndex: null,
+      workflowResumeUpdatedAt: null,
+      workflowResumeReason: null,
       intervalSec: normalized.intervalSec,
       timeoutSec: 0,
       enabled: normalized.enabled ?? true,
@@ -671,16 +695,25 @@ export class LoopScheduler {
     await this.persistAndResync();
   }
 
-  stopTask(taskId: string, reason = "task stopped manually"): { running: boolean; queued: number } {
+  stopTask(
+    taskId: string,
+    reason = "task stopped manually",
+    options?: { afterRound?: boolean }
+  ): { running: boolean; queued: number; deferred: boolean } {
     const queued = this.removeQueuedRuns(taskId, reason);
-    const running = this.cancelRunningTask(taskId, reason);
-    return { running, queued };
+    const running = this.cancelRunningTask(taskId, reason, options);
+    const deferred = Boolean(options && options.afterRound && running);
+    return { running, queued, deferred };
   }
 
-  private cancelRunningTask(taskId: string, reason: string): boolean {
+  private cancelRunningTask(taskId: string, reason: string, options?: { afterRound?: boolean }): boolean {
     const control = this.runningControls.get(taskId);
     if (!control) {
       return false;
+    }
+    if (options && options.afterRound) {
+      control.stopAfterRoundReason = reason;
+      return true;
     }
     control.cancelReason = reason;
     const child = control.child;
@@ -707,6 +740,38 @@ export class LoopScheduler {
       recordRun: true,
       restartIfRunning: true
     });
+  }
+
+  async resumeNow(taskId: string, stepIndex?: number | null): Promise<LoopRun> {
+    const task = this.tasks.get(taskId);
+    if (!task) {
+      throw new Error("task not found");
+    }
+    const resolvedStepIndex = this.resolveResumeStepIndex(taskId, stepIndex);
+    return this.runTask(task, "manual", {
+      persistTaskState: true,
+      recordRun: true,
+      restartIfRunning: true,
+      resumeStepIndex: resolvedStepIndex
+    });
+  }
+
+  hasTask(taskId: string): boolean {
+    return this.tasks.has(taskId);
+  }
+
+  resolveResumeStepIndex(taskId: string, stepIndex?: number | null): number {
+    const task = this.tasks.get(taskId);
+    if (!task) {
+      throw new Error("task not found");
+    }
+    const resolvedStepIndex = stepIndex == null
+      ? task.workflowResumeStepIndex
+      : normalizeOptionalPositiveInt(stepIndex);
+    if (resolvedStepIndex == null) {
+      throw new Error("resume checkpoint not found");
+    }
+    return resolvedStepIndex;
   }
 
   async testTask(raw: CreateLoopTaskInput): Promise<LoopRun> {
@@ -736,6 +801,9 @@ export class LoopScheduler {
       workflowLoopFromStart: normalized.workflowLoopFromStart ?? false,
       workflowSharedSession: normalized.workflowSharedSession ?? true,
       workflowFullAccess: normalized.workflowFullAccess ?? false,
+      workflowResumeStepIndex: null,
+      workflowResumeUpdatedAt: null,
+      workflowResumeReason: null,
       intervalSec: clamp(normalized.intervalSec ?? 300, 5, 86400),
       timeoutSec: 0,
       enabled: true,
@@ -1107,6 +1175,7 @@ export class LoopScheduler {
     const control: RunningTaskControl = {
       runId,
       cancelReason: null,
+      stopAfterRoundReason: null,
       child: null
     };
     this.running.add(task.id);
@@ -1183,8 +1252,39 @@ export class LoopScheduler {
           }
           return;
         }
+        const requestedResumeStep = normalizeOptionalPositiveInt(options.resumeStepIndex);
+        const initialStepIdx = requestedResumeStep == null ? 0 : (requestedResumeStep - 1);
+        if (initialStepIdx < 0 || initialStepIdx >= steps.length) {
+          const failed: LoopRun = {
+            id: runId,
+            taskId: task.id,
+            taskName: task.name,
+            runner: task.runner,
+            trigger,
+            startedAt,
+            endedAt: nowIso(),
+            durationMs: Date.now() - started,
+            status: "failed",
+            exitCode: null,
+            stdout: "",
+            stderr: "",
+            error: `invalid resume step index: ${requestedResumeStep}; enabled step count=${steps.length}`
+          };
+          this.pushLiveEvent(runId, "error", failed.error || "invalid resume step index");
+          if (options.recordRun) {
+            this.pushRun(failed);
+          }
+          this.clearLiveRun(runId);
+          this.running.delete(task.id);
+          this.runningControls.delete(task.id);
+          this.pumpQueue();
+          for (const resolveRun of resolveRuns) {
+            resolveRun(failed);
+          }
+          return;
+        }
         this.setLiveRunPhase(runId, "running");
-        this.setLiveRunStep(runId, 1, 0, steps.length, null);
+        this.setLiveRunStep(runId, 1, initialStepIdx, steps.length, null);
         let mergedStdout = "";
         let mergedStderr = "";
         let finalStatus: "success" | "failed" | "timeout" | "cancelled" = "success";
@@ -1231,6 +1331,7 @@ export class LoopScheduler {
         }
 
         let round = 1;
+        let roundStartStepIdx = initialStepIdx;
         let stopAll = false;
         while (!stopAll) {
           const currentControl = this.runningControls.get(task.id);
@@ -1241,8 +1342,11 @@ export class LoopScheduler {
             this.pushLiveEvent(runId, "error", finalError);
             break;
           }
-          this.pushLiveEvent(runId, "info", `round ${round} started`);
-          for (let i = 0; i < steps.length; i += 1) {
+          const resumeHint = roundStartStepIdx > 0
+            ? ` (resume from step ${roundStartStepIdx + 1}/${steps.length})`
+            : "";
+          this.pushLiveEvent(runId, "info", `round ${round} started${resumeHint}`);
+          for (let i = roundStartStepIdx; i < steps.length; i += 1) {
             const step = steps[i];
             const currentControl = this.runningControls.get(task.id);
             if (currentControl && currentControl.runId === runId && currentControl.cancelReason) {
@@ -1365,7 +1469,16 @@ export class LoopScheduler {
           if (!task.workflowLoopFromStart || stopAll) {
             break;
           }
+          const controlAfterRound = this.runningControls.get(task.id);
+          if (controlAfterRound && controlAfterRound.runId === runId && controlAfterRound.stopAfterRoundReason) {
+            finalStatus = "cancelled";
+            finalExitCode = 0;
+            finalError = controlAfterRound.stopAfterRoundReason;
+            this.pushLiveEvent(runId, "info", `round ${round} completed, stop requested after current round`);
+            break;
+          }
           this.pushLiveEvent(runId, "info", `round ${round} completed, loop from start enabled`);
+          roundStartStepIdx = 0;
           round += 1;
         }
 
@@ -1413,10 +1526,19 @@ export class LoopScheduler {
         if (options.persistTaskState) {
           const current = this.tasks.get(task.id);
           if (current) {
+            const checkpointStepIndex = finalStatus === "failed" && firstFailure
+              ? firstFailure.stepIndex
+              : null;
+            const checkpointReason = finalStatus === "failed"
+              ? (finalError || "workflow step failed")
+              : null;
             const updated: LoopTask = {
               ...current,
               lastRunAt: endedAt,
-              updatedAt: nowIso()
+              updatedAt: nowIso(),
+              workflowResumeStepIndex: checkpointStepIndex,
+              workflowResumeUpdatedAt: checkpointStepIndex ? endedAt : null,
+              workflowResumeReason: checkpointReason
             };
             this.tasks.set(task.id, updated);
             try {
