@@ -194,6 +194,17 @@ export function renderLoopHtml(): string {
     .span2 { grid-column: span 2; }
     .span4 { grid-column: span 4; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .task-actions {
+      border-top: 1px dashed #d6e0f0;
+      padding-top: 10px;
+      margin-top: 10px;
+    }
+    .action-note {
+      margin-top: 7px;
+      font-size: 12px;
+      color: #5f7394;
+      line-height: 1.5;
+    }
     button {
       border: 1px solid transparent;
       border-radius: 10px;
@@ -238,8 +249,23 @@ export function renderLoopHtml(): string {
       color: #1e406f;
       border-color: #d8e4fb;
     }
+    button.neutral {
+      background: #eef6ff;
+      color: #1d4c83;
+      border-color: #cfe0f8;
+    }
+    button.info {
+      background: #ecf7ff;
+      color: #135a7b;
+      border-color: #c5e5f5;
+    }
     button.danger { background: #ffe8e8; color: var(--error); border-color: #f3c8c8; }
     button.warn { background: #fff1df; color: #9a5b00; border-color: #f0d6b0; }
+    button.success {
+      background: #edfbf3;
+      color: #15653a;
+      border-color: #bfe8cf;
+    }
     .ok-text { color: var(--ok); }
     .warn-text { color: var(--warn); }
     .error-text { color: var(--error); }
@@ -356,6 +382,10 @@ export function renderLoopHtml(): string {
         <label class="field conditional-hidden"><span>Runner</span>
           <select id="runner">
             <option value="custom" selected>custom</option>
+            <option value="codex">codex</option>
+            <option value="claude_code">claude_code</option>
+            <option value="openai">openai</option>
+            <option value="anthropic">anthropic</option>
           </select>
         </label>
         <label class="field"><span>循环间隔(秒)</span><input id="intervalSec" data-help-key="intervalSec" type="number" min="5" value="300" /><small class="hint">定时触发周期，最小 5 秒；越小执行越频繁。</small></label>
@@ -479,9 +509,12 @@ export function renderLoopHtml(): string {
     const STEP_TEMPLATES = {
       dev_codex: {
         name: "开发",
+        stepType: "command",
         runner: "custom",
         cwd: "",
         command: "",
+        toolName: "",
+        toolInput: "",
         promptAppend: "根据需求改动代码，优先保证可运行性和最小变更面。",
         retryCount: 1,
         retryBackoffMs: 1200,
@@ -490,9 +523,12 @@ export function renderLoopHtml(): string {
       },
       review_codex: {
         name: "Code Review",
+        stepType: "command",
         runner: "custom",
         cwd: "",
         command: "",
+        toolName: "",
+        toolInput: "",
         promptAppend: "重点检查正确性、边界条件、回归风险和缺失测试。",
         retryCount: 1,
         retryBackoffMs: 1200,
@@ -501,9 +537,12 @@ export function renderLoopHtml(): string {
       },
       review_custom: {
         name: "Code Review",
+        stepType: "command",
         runner: "custom",
         cwd: "",
         command: "review-cli \\\\\\\"{prompt}\\\\\\\"",
+        toolName: "",
+        toolInput: "",
         promptAppend: "输出问题清单和修复建议。",
         retryCount: 1,
         retryBackoffMs: 1200,
@@ -512,9 +551,12 @@ export function renderLoopHtml(): string {
       },
       summary_codex: {
         name: "总结",
+        stepType: "command",
         runner: "custom",
         cwd: "",
         command: "",
+        toolName: "",
+        toolInput: "",
         promptAppend: "总结改动内容、影响范围和验证建议。",
         retryCount: 1,
         retryBackoffMs: 1200,
@@ -523,9 +565,12 @@ export function renderLoopHtml(): string {
       },
       test_codex: {
         name: "测试",
+        stepType: "command",
         runner: "custom",
         cwd: "",
         command: "",
+        toolName: "",
+        toolInput: "",
         promptAppend: "执行并整理相关测试结果，指出失败原因。",
         retryCount: 1,
         retryBackoffMs: 1200,
@@ -616,7 +661,6 @@ export function renderLoopHtml(): string {
       if (commandInputEl && commandInputEl.isConnected) {
         modeDraft.command = String(commandInputEl.value || "");
       }
-      modeDraft.workflowCarryContext = "false";
       if (workflowLoopFromStartEl && workflowLoopFromStartEl.isConnected) {
         modeDraft.workflowLoopFromStart = String(workflowLoopFromStartEl.value || "false");
       }
@@ -667,7 +711,6 @@ export function renderLoopHtml(): string {
         workflowPanelHostEl = document.getElementById("workflowPanelHost");
         if (cwdInputEl) cwdInputEl.value = modeDraft.cwd;
         if (commandInputEl) commandInputEl.value = modeDraft.command;
-        modeDraft.workflowCarryContext = "false";
         if (workflowLoopFromStartEl) workflowLoopFromStartEl.value = modeDraft.workflowLoopFromStart || "false";
         if (workflowSharedSessionEl) workflowSharedSessionEl.value = modeDraft.workflowSharedSession || "true";
         if (workflowFullAccessEl) workflowFullAccessEl.value = modeDraft.workflowFullAccess || "false";
@@ -727,9 +770,12 @@ export function renderLoopHtml(): string {
         ensureWorkflowUiLoaded();
         workflowBuilderRows.push({
           name: "新步骤",
+          stepType: "command",
           runner: "",
           cwd: "",
           command: "",
+          toolName: "",
+          toolInput: "",
           promptAppend: "",
           retryCount: 0,
           retryBackoffMs: 1200,
@@ -806,6 +852,8 @@ export function renderLoopHtml(): string {
           } else {
             row[key] = target.value;
           }
+        } else if (target instanceof HTMLTextAreaElement) {
+          row[key] = target.value;
         } else if (target instanceof HTMLSelectElement) {
           if (key === "continueOnError") {
             row.continueOnError = target.value === "true";
@@ -836,7 +884,6 @@ export function renderLoopHtml(): string {
     }
 
     function applyDynamicVisibility() {
-      document.getElementById("runner").value = "custom";
       const mode = String(advancedModeEl.value || "command");
       mountModePanel(mode);
       const workflowEnabled = mode === "workflow";
@@ -851,6 +898,9 @@ export function renderLoopHtml(): string {
     }
 
     function draftWarningsOf(body) {
+      function isModelRunner(runner) {
+        return runner === "openai" || runner === "anthropic";
+      }
       const warns = [];
       const duplicate = cachedTasks.find(function (item) {
         if (!item || !item.name) return false;
@@ -862,14 +912,38 @@ export function renderLoopHtml(): string {
       if (!body.prompt) warns.push("Prompt 为空：任务将无法创建或测试。");
       if (!Number.isFinite(body.intervalSec) || body.intervalSec < 5) warns.push("循环间隔需 >= 5 秒。");
       const mode = String(advancedModeEl.value || "command");
-      if (mode === "command" && !body.command) warns.push("命令为空：自定义命令模式下必须填写命令。");
+      const taskRunner = String(body.runner || "custom");
+      if (mode === "command" && taskRunner === "custom" && !body.command) {
+        warns.push("命令为空：runner=custom 时必须填写命令。");
+      }
       if (mode === "workflow") {
         const steps = Array.isArray(body.workflowSteps) ? body.workflowSteps.filter(function (x) { return x && x.enabled !== false; }) : [];
         if (steps.length === 0) {
           warns.push("Workflow 至少需要 1 个启用步骤。");
         }
-        if (!body.command && steps.length > 0 && steps.some(function (x) { return !String(x.command || "").trim(); })) {
-          warns.push("Workflow 中存在未填写命令的启用步骤，且任务级命令为空：执行会失败。");
+        if (steps.length > 0) {
+          const hasMissingCustomCommand = steps.some(function (x) {
+            if (x && x.tool && String(x.tool.name || "").trim()) {
+              return false;
+            }
+            const stepRunner = String((x && x.runner) || taskRunner || "custom");
+            if (isModelRunner(stepRunner) || stepRunner === "codex" || stepRunner === "claude_code") {
+              return false;
+            }
+            const stepCommand = String((x && x.command) || "").trim();
+            const taskCommand = String(body.command || "").trim();
+            return !stepCommand && !taskCommand;
+          });
+          if (hasMissingCustomCommand) {
+            warns.push("Workflow 中存在 runner=custom 且未提供命令（步骤与任务级都为空）的启用步骤：执行会失败。");
+          }
+          const hasMissingToolName = steps.some(function (x) {
+            if (!x || !x.tool) return false;
+            return !String(x.tool.name || "").trim();
+          });
+          if (hasMissingToolName) {
+            warns.push("Workflow 中存在 tool 步骤但工具名为空：执行会失败。");
+          }
         }
         if (body.workflowFullAccess) {
           warns.push("已开启 Full Access：命令将跳过沙箱/审批，风险较高，请确认运行环境安全。");
@@ -890,7 +964,9 @@ export function renderLoopHtml(): string {
           || text.includes("名称重复")
           || text.includes("命令为空")
           || text.includes("至少需要 1 个启用步骤")
-          || text.includes("未填写命令");
+          || text.includes("未填写命令")
+          || text.includes("未提供命令")
+          || text.includes("工具名为空");
       });
     }
 
@@ -1002,6 +1078,9 @@ export function renderLoopHtml(): string {
       if (lower.includes("workflow must have at least one enabled step")) {
         return "Workflow 至少需要 1 个启用步骤。";
       }
+      if (lower.includes("workflow requires at least one step")) {
+        return "Workflow 至少需要 1 个步骤。";
+      }
       if (lower.includes("no enabled workflow steps")) {
         return "Workflow 中没有启用步骤：请至少启用一个步骤。";
       }
@@ -1093,14 +1172,45 @@ export function renderLoopHtml(): string {
       return false;
     }
 
+    function parseToolInputText(raw) {
+      const text = String(raw || "").trim();
+      if (!text) {
+        return undefined;
+      }
+      try {
+        return JSON.parse(text);
+      } catch {
+        return text;
+      }
+    }
+
     function normalizeStep(step) {
       const retryCountRaw = Number(step && step.retryCount);
       const retryBackoffRaw = Number(step && step.retryBackoffMs);
+      const toolName = step && step.tool && step.tool.name ? String(step.tool.name).trim() : "";
+      const toolInputText = step && step.tool && Object.prototype.hasOwnProperty.call(step.tool, "input")
+        ? (() => {
+          if (typeof step.tool.input === "string") {
+            return step.tool.input;
+          }
+          try {
+            return JSON.stringify(step.tool.input);
+          } catch {
+            return String(step.tool.input || "");
+          }
+        })()
+        : "";
+      const stepType = step && step.stepType
+        ? String(step.stepType).trim()
+        : (toolName ? "tool" : "command");
       return {
         name: String(step && step.name ? step.name : "").trim(),
+        stepType: stepType === "tool" ? "tool" : "command",
         runner: step && step.runner ? String(step.runner).trim() : "",
         cwd: step && step.cwd ? String(step.cwd).trim() : "",
         command: step && step.command ? String(step.command).trim() : "",
+        toolName: step && step.toolName ? String(step.toolName).trim() : toolName,
+        toolInput: step && step.toolInput != null ? String(step.toolInput) : toolInputText,
         promptAppend: step && step.promptAppend ? String(step.promptAppend).trim() : "",
         retryCount: Number.isFinite(retryCountRaw) ? Math.max(0, Math.min(8, Math.floor(retryCountRaw))) : 0,
         retryBackoffMs: Number.isFinite(retryBackoffRaw) ? Math.max(200, Math.min(30000, Math.floor(retryBackoffRaw))) : 1200,
@@ -1114,9 +1224,12 @@ export function renderLoopHtml(): string {
       if (!tpl) return null;
       return {
         name: tpl.name,
+        stepType: tpl.stepType || "command",
         runner: tpl.runner,
         cwd: tpl.cwd,
         command: tpl.command,
+        toolName: tpl.toolName || "",
+        toolInput: tpl.toolInput || "",
         promptAppend: tpl.promptAppend,
         retryCount: tpl.retryCount,
         retryBackoffMs: tpl.retryBackoffMs,
@@ -1135,14 +1248,25 @@ export function renderLoopHtml(): string {
       }
       const rowsHtml = workflowBuilderRows.map(function (row, idx) {
         const r = normalizeStep(row);
+        const isToolStep = r.stepType === "tool";
         return '<div class="wf-row" data-idx="' + idx + '">'
           + '<input data-k="name" value="' + esc(r.name) + '" placeholder="步骤名" />'
+          + '<select data-k="stepType" class="wf-adv">'
+          + '<option value="command"' + (isToolStep ? "" : " selected") + '>命令步骤</option>'
+          + '<option value="tool"' + (isToolStep ? " selected" : "") + '>工具步骤</option>'
+          + '</select>'
           + '<select data-k="runner">'
           + '<option value=""' + (r.runner ? "" : " selected") + '>继承任务（' + esc(taskRunner) + '）</option>'
           + '<option value="custom"' + (r.runner === "custom" ? " selected" : "") + '>custom</option>'
+          + '<option value="codex"' + (r.runner === "codex" ? " selected" : "") + '>codex</option>'
+          + '<option value="claude_code"' + (r.runner === "claude_code" ? " selected" : "") + '>claude_code</option>'
+          + '<option value="openai"' + (r.runner === "openai" ? " selected" : "") + '>openai</option>'
+          + '<option value="anthropic"' + (r.runner === "anthropic" ? " selected" : "") + '>anthropic</option>'
           + '</select>'
           + '<input class="wf-adv" data-k="cwd" value="' + esc(r.cwd || "") + '" placeholder="可选：步骤路径(目录/文件)" />'
-          + '<input class="wf-adv" data-k="command" value="' + esc(r.command) + '" placeholder="可选：覆盖命令" />'
+          + '<input class="wf-adv" data-k="command" value="' + esc(r.command) + '" placeholder="' + (isToolStep ? "工具步骤可留空" : "可选：覆盖命令") + '" />'
+          + '<input class="wf-adv" data-k="toolName" value="' + esc(r.toolName || "") + '" placeholder="' + (isToolStep ? "必填：工具名" : "可选：工具名") + '" />'
+          + '<textarea class="wf-adv" data-k="toolInput" placeholder="' + (isToolStep ? "可选：JSON 或纯文本" : "可选：工具输入(JSON/文本)") + '">' + esc(r.toolInput || "") + '</textarea>'
           + '<input class="wf-adv" data-k="promptAppend" value="' + esc(r.promptAppend || "") + '" placeholder="可选：附加提示" />'
           + '<input class="wf-adv" data-k="retryCount" type="number" min="0" max="8" value="' + esc(r.retryCount) + '" placeholder="重试次数(0-8)" />'
           + '<input class="wf-adv" data-k="retryBackoffMs" type="number" min="200" max="30000" step="100" value="' + esc(r.retryBackoffMs) + '" placeholder="退避基数ms(200-30000)" />'
@@ -1171,11 +1295,19 @@ export function renderLoopHtml(): string {
       modeDraft.workflowSteps = normalizedRows
         .filter(function (row) { return row.name; })
         .map(function (row) {
+          const stepType = row.stepType === "tool" ? "tool" : "command";
+          const toolName = String(row.toolName || "").trim();
           return {
             name: row.name,
             runner: row.runner || undefined,
             cwd: row.cwd || undefined,
-            command: row.command || undefined,
+            command: stepType === "command" ? (row.command || undefined) : undefined,
+            tool: stepType === "tool" && toolName
+              ? {
+                name: toolName,
+                input: parseToolInputText(row.toolInput)
+              }
+              : undefined,
             promptAppend: row.promptAppend || undefined,
             retryCount: row.retryCount,
             retryBackoffMs: row.retryBackoffMs,
@@ -1215,15 +1347,30 @@ export function renderLoopHtml(): string {
         ? '<span class="tag running">运行中</span>'
         : (isQueued ? '<span class="tag queued">排队中</span>' : '<span class="tag">空闲</span>');
       const runLabel = isRunning
-        ? "重启执行"
-        : (isQueued ? "重新触发" : (item.enabled ? "立即执行" : "手动执行"));
+        ? "↻ 重启执行"
+        : (isQueued ? "↻ 重新触发" : (item.enabled ? "▶ 立即执行" : "▶ 手动执行"));
       const runClass = isActive ? "warn" : "";
+      const runTitle = isRunning
+        ? "停止当前执行并立即重启一轮"
+        : (isQueued
+          ? "将队列中的同任务请求合并为最新一次触发"
+          : "立即触发一次执行，不等待定时器");
       const stopLabel = isRunning ? "停止本轮" : "取消排队";
+      const stopTitle = isRunning
+        ? "仅停止当前轮次，不影响任务配置"
+        : "从等待队列中移除此任务请求";
       const showStopButton = isActive;
       const showGracefulStopButton = isRunning && item.workflowLoopFromStart;
+      const gracefulStopTitle = "仅在从头循环模式可用：当前轮全部步骤结束后停止";
       const toggleLabel = item.enabled
-        ? (isActive ? "停用(并停止)" : "停用")
-        : (isActive ? "重新启用调度" : "启用");
+        ? (isActive ? "⏹ 停用(并停止)" : "⏸ 停用")
+        : (isActive ? "♻ 重新启用调度" : "✅ 启用");
+      const toggleClass = item.enabled ? "warn" : "success";
+      const toggleTitle = item.enabled
+        ? (isActive
+          ? "停用并尝试终止当前运行/排队，后续不再自动调度"
+          : "停用后仅保留手动触发，不再自动调度")
+        : "重新开启自动调度；不会中断当前已在运行/排队的请求";
       const runtimeHint = isRunning
         ? (item.enabled
           ? "正在运行：可重启本轮、停止本轮，编辑暂不可用。"
@@ -1233,6 +1380,13 @@ export function renderLoopHtml(): string {
             ? "正在排队：可重新触发（合并请求）或取消排队。"
             : "正在排队（已停用）：本次请求仍在队列，后续自动调度已关闭；可取消排队或重新启用调度。")
           : (item.enabled ? "空闲且已启用：可立即执行或编辑。" : "空闲且已停用：可手动执行，或先启用定时任务。"));
+      const actionNote = isRunning
+        ? "按钮说明：重启执行=中断并立刻重跑；停止本轮=终止当前轮；停用(并停止)=关闭后续自动调度。"
+        : (isQueued
+          ? "按钮说明：重新触发=合并为最新请求；取消排队=从队列移除；重新启用调度=恢复后续自动触发。"
+          : (item.enabled
+            ? "按钮说明：立即执行=马上跑一轮；停用=仅关闭后续自动调度；编辑=修改任务配置。"
+            : "按钮说明：手动执行=只执行当前一次；启用=恢复自动调度；编辑=修改任务配置。"));
       return {
         isRunning,
         isQueued,
@@ -1240,10 +1394,16 @@ export function renderLoopHtml(): string {
         runtimeTag,
         runLabel,
         runClass,
+        runTitle,
         stopLabel,
+        stopTitle,
         showStopButton,
         showGracefulStopButton,
+        gracefulStopTitle,
         toggleLabel,
+        toggleClass,
+        toggleTitle,
+        actionNote,
         runtimeHint
       };
     }
@@ -1276,13 +1436,15 @@ export function renderLoopHtml(): string {
         ? item.workflowSteps.map(function (step) {
           const stepName = String(step.name || "");
           const stepRunner = step.runner ? String(step.runner) : item.runner;
+          const toolName = step && step.tool && step.tool.name ? String(step.tool.name) : "";
           const stepCwd = step.cwd ? ",cwd=" + String(step.cwd) : "";
           const stepAppend = step.promptAppend ? ",append" : "";
           const stepRetry = Number(step.retryCount) > 0
             ? ",retry=" + String(step.retryCount) + "@" + String(step.retryBackoffMs || 1200) + "ms"
             : "";
           const stepErr = step.continueOnError ? ",onError=continue" : "";
-          return stepName + "(" + stepRunner + stepCwd + stepAppend + stepRetry + stepErr + ")";
+          const stepTool = toolName ? ",tool=" + toolName : "";
+          return stepName + "(" + stepRunner + stepTool + stepCwd + stepAppend + stepRetry + stepErr + ")";
         }).join(" -> ")
         : workflowText;
       const loopText = item.workflowLoopFromStart ? "从头循环" : "单轮";
@@ -1290,23 +1452,32 @@ export function renderLoopHtml(): string {
       const accessText = item.workflowFullAccess ? "Full Access" : "标准";
       const runtimeState = taskRuntimeState(item.id);
       const runtimeUiItem = taskRuntimeUi(item, runtimeState);
-      const stopButton = runtimeUiItem.showStopButton
-        ? ('<button class="warn" data-act="stop" data-id="' + esc(item.id) + '">' + runtimeUiItem.stopLabel + '</button>')
-        : "";
-      const gracefulStopButton = runtimeUiItem.showGracefulStopButton
-        ? ('<button class="ghost" data-act="stopAfterRound" data-id="' + esc(item.id) + '">本轮完成后停止</button>')
-        : "";
       const checkpointStepIndex = Number(item.workflowResumeStepIndex);
       const hasCheckpoint = Number.isFinite(checkpointStepIndex) && checkpointStepIndex >= 1;
       const checkpointText = hasCheckpoint
         ? ("断点: 第 " + checkpointStepIndex + " 步 | 更新时间: " + formatTime(item.workflowResumeUpdatedAt) + (item.workflowResumeReason ? (" | 原因: " + item.workflowResumeReason) : ""))
         : "断点: 无";
-      const resumeButton = (!runtimeUiItem.isActive && hasCheckpoint)
-        ? ('<button class="ghost" data-act="resume" data-id="' + esc(item.id) + '">断点恢复</button>')
-        : "";
       const editDisabled = runtimeUiItem.isActive ? ' disabled title="任务运行/排队中，先停止后再编辑"' : "";
       const deleteLabel = runtimeUiItem.isActive ? "删除(并终止)" : "删除";
       const deleteClass = runtimeUiItem.isActive ? "warn" : "danger";
+      const editTitle = runtimeUiItem.isActive
+        ? "任务运行/排队中，编辑已禁用"
+        : "编辑任务名称、间隔、工作流与命令配置";
+      const cloneTitle = "将当前任务配置复制到上方表单，便于快速新建";
+      const resumeTitle = "从保存的失败断点步骤继续执行";
+      const deleteTitle = runtimeUiItem.isActive
+        ? "删除任务并终止当前运行/排队"
+        : "永久删除任务配置";
+      const runButton = '<button class="' + runtimeUiItem.runClass + '" data-act="run" data-id="' + esc(item.id) + '" title="' + esc(runtimeUiItem.runTitle) + '">' + runtimeUiItem.runLabel + '</button>';
+      const resumeButtonHtml = (!runtimeUiItem.isActive && hasCheckpoint)
+        ? ('<button class="info" data-act="resume" data-id="' + esc(item.id) + '" title="' + esc(resumeTitle) + '">↺ 断点恢复</button>')
+        : "";
+      const stopButtonHtml = runtimeUiItem.showStopButton
+        ? ('<button class="warn" data-act="stop" data-id="' + esc(item.id) + '" title="' + esc(runtimeUiItem.stopTitle) + '">' + (runtimeUiItem.isRunning ? "⏹ 停止本轮" : "✖ 取消排队") + '</button>')
+        : "";
+      const gracefulStopButtonHtml = runtimeUiItem.showGracefulStopButton
+        ? ('<button class="neutral" data-act="stopAfterRound" data-id="' + esc(item.id) + '" title="' + esc(runtimeUiItem.gracefulStopTitle) + '">⏭ 本轮完成后停止</button>')
+        : "";
       return '<div class="task-item">'
         + '<div class="row"><div class="row" style="gap:8px;"><strong>' + esc(item.name) + '</strong></div><div class="row" style="gap:6px;">'
         + enabledTag
@@ -1321,21 +1492,23 @@ export function renderLoopHtml(): string {
         + '<div class="muted" style="margin-top:4px;">' + esc(checkpointText) + '</div>'
         + '<div class="muted" style="margin-top:4px;">状态提示: ' + esc(runtimeUiItem.runtimeHint) + '</div>'
         + '<pre style="margin-top:8px;">workflow: ' + esc(stepDetail) + '\\nprompt: ' + esc(item.prompt) + '\\ncommand: ' + esc(cmd) + '</pre>'
-        + '<div class="actions">'
-        + '<button class="' + runtimeUiItem.runClass + '" data-act="run" data-id="' + esc(item.id) + '">' + runtimeUiItem.runLabel + '</button>'
-        + resumeButton
-        + stopButton
-        + gracefulStopButton
-        + '<button class="ghost" data-act="edit" data-id="' + esc(item.id) + '"' + editDisabled + '>' + editLabel + '</button>'
-        + '<button class="warn" data-act="clone" data-id="' + esc(item.id) + '">复制到表单</button>'
-        + '<button class="ghost" data-act="toggle" data-id="' + esc(item.id) + '">' + runtimeUiItem.toggleLabel + '</button>'
-        + '<button class="' + deleteClass + '" data-act="delete" data-id="' + esc(item.id) + '">' + deleteLabel + '</button>'
-        + '</div></div>';
+        + '<div class="actions task-actions">'
+        + runButton
+        + resumeButtonHtml
+        + stopButtonHtml
+        + gracefulStopButtonHtml
+        + '<button class="ghost" data-act="edit" data-id="' + esc(item.id) + '" title="' + esc(editTitle) + '"' + editDisabled + '>✎ ' + editLabel + '</button>'
+        + '<button class="neutral" data-act="clone" data-id="' + esc(item.id) + '" title="' + esc(cloneTitle) + '">⎘ 复制到表单</button>'
+        + '<button class="' + runtimeUiItem.toggleClass + '" data-act="toggle" data-id="' + esc(item.id) + '" title="' + esc(runtimeUiItem.toggleTitle) + '">' + runtimeUiItem.toggleLabel + '</button>'
+        + '<button class="' + deleteClass + '" data-act="delete" data-id="' + esc(item.id) + '" title="' + esc(deleteTitle) + '">🗑 ' + deleteLabel + '</button>'
+        + '</div>'
+        + '<div class="action-note">' + esc(runtimeUiItem.actionNote) + '</div>'
+        + '</div>';
     }
 
     function fillFormFromTask(item) {
       document.getElementById("name").value = item.name || "";
-      document.getElementById("runner").value = "custom";
+      document.getElementById("runner").value = item && item.runner ? String(item.runner) : "custom";
       document.getElementById("prompt").value = item.prompt || "";
       document.getElementById("intervalSec").value = String(item.intervalSec || 300);
       modeDraft.cwd = item.cwd || "";
@@ -1343,7 +1516,7 @@ export function renderLoopHtml(): string {
       modeDraft.workflowSteps = Array.isArray(item.workflowSteps) && item.workflowSteps.length
         ? item.workflowSteps.map(normalizeStep)
         : (Array.isArray(item.workflow) ? item.workflow.map(function (name) { return normalizeStep({ name: name }); }) : []);
-      modeDraft.workflowCarryContext = "false";
+      modeDraft.workflowCarryContext = item.workflowCarryContext ? "true" : "false";
       modeDraft.workflowLoopFromStart = item.workflowLoopFromStart ? "true" : "false";
       modeDraft.workflowSharedSession = item.workflowSharedSession === false ? "false" : "true";
       modeDraft.workflowFullAccess = item.workflowFullAccess ? "true" : "false";
@@ -1557,13 +1730,33 @@ export function renderLoopHtml(): string {
       }
       const workflowEnabled = mode === "workflow";
       const rawCommand = commandInputEl ? (commandInputEl.value.trim() || null) : null;
+      const workflowCarryContext = workflowEnabled
+        ? parseUiBoolean(modeDraft.workflowCarryContext, false)
+        : undefined;
+      const workflowLoopFromStart = workflowEnabled
+        ? ((workflowLoopFromStartEl ? workflowLoopFromStartEl.value : "false") === "true")
+        : undefined;
+      const workflowSharedSession = workflowEnabled
+        ? ((workflowSharedSessionEl ? workflowSharedSessionEl.value : "true") !== "false")
+        : undefined;
+      const workflowFullAccess = workflowEnabled
+        ? ((workflowFullAccessEl ? workflowFullAccessEl.value : "false") === "true")
+        : undefined;
       const workflowSteps = workflowEnabled
         ? workflowBuilderRows.map(normalizeStep).filter(function (row) { return row.name; }).map(function (row) {
+            const stepType = row.stepType === "tool" ? "tool" : "command";
+            const toolName = String(row.toolName || "").trim();
             return {
               name: row.name,
               runner: row.runner || undefined,
               cwd: row.cwd || undefined,
-              command: row.command || undefined,
+              command: stepType === "command" ? (row.command || undefined) : undefined,
+              tool: stepType === "tool" && toolName
+                ? {
+                  name: toolName,
+                  input: parseToolInputText(row.toolInput)
+                }
+                : undefined,
               promptAppend: row.promptAppend || undefined,
               retryCount: row.retryCount,
               retryBackoffMs: row.retryBackoffMs,
@@ -1571,20 +1764,20 @@ export function renderLoopHtml(): string {
               enabled: row.enabled
             };
           })
-        : [];
+        : undefined;
       return {
         name: document.getElementById("name").value.trim(),
-        runner: "custom",
+        runner: String(document.getElementById("runner").value || "custom"),
         prompt: document.getElementById("prompt").value.trim(),
         intervalSec: Number(document.getElementById("intervalSec").value),
         cwd: cwdInputEl ? (cwdInputEl.value.trim() || null) : null,
         command: rawCommand,
-        workflow: "",
+        workflow: workflowEnabled ? "" : undefined,
         workflowSteps: workflowSteps,
-        workflowCarryContext: false,
-        workflowLoopFromStart: workflowEnabled ? ((workflowLoopFromStartEl ? workflowLoopFromStartEl.value : "false") === "true") : false,
-        workflowSharedSession: workflowEnabled ? ((workflowSharedSessionEl ? workflowSharedSessionEl.value : "true") !== "false") : false,
-        workflowFullAccess: workflowEnabled ? ((workflowFullAccessEl ? workflowFullAccessEl.value : "false") === "true") : false,
+        workflowCarryContext: workflowCarryContext,
+        workflowLoopFromStart: workflowLoopFromStart,
+        workflowSharedSession: workflowSharedSession,
+        workflowFullAccess: workflowFullAccess,
         enabled: editingTaskId ? editingTaskEnabled : true
       };
     }

@@ -52,13 +52,13 @@ test("run resolves and releases slot when unexpected execution error happens", a
       intervalSec: 300
     });
 
-    (scheduler as unknown as {
-      executeCommand: () => Promise<never>;
-    }).executeCommand = async () => {
-      throw new Error("boom");
+    const executionOverrides = {
+      runCommand: async () => {
+        throw new Error("boom");
+      }
     };
 
-    const run = await scheduler.runNow(task.id);
+    const run = await scheduler.runNow(task.id, { executionOverrides });
     assert.equal(run.status, "failed");
     assert.match(String(run.error || ""), /unexpected scheduler error: boom/);
     assert.equal(scheduler.getSettings().runningCount, 0);

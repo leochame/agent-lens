@@ -71,23 +71,23 @@ this.__ui__ = { taskRuntimeUi, toggleResultMessage };`,
 test("taskRuntimeUi keeps running+disabled state and actions consistent", () => {
   const ui = buildUiApi();
   const state = ui.taskRuntimeUi({ enabled: false, workflowLoopFromStart: true }, "running");
-  assert.equal(state.toggleLabel, "重新启用调度");
-  assert.equal(state.runLabel, "重启执行");
+  assert.equal(state.toggleLabel, "♻ 重新启用调度");
+  assert.equal(state.runLabel, "↻ 重启执行");
   assert.match(state.runtimeHint, /当前轮次会继续/);
 });
 
 test("taskRuntimeUi marks queued+disabled with explicit scheduling hint", () => {
   const ui = buildUiApi();
   const state = ui.taskRuntimeUi({ enabled: false }, "queued");
-  assert.equal(state.toggleLabel, "重新启用调度");
+  assert.equal(state.toggleLabel, "♻ 重新启用调度");
   assert.match(state.runtimeHint, /本次请求仍在队列/);
 });
 
 test("taskRuntimeUi keeps idle+disabled toggle clear", () => {
   const ui = buildUiApi();
   const state = ui.taskRuntimeUi({ enabled: false }, "idle");
-  assert.equal(state.toggleLabel, "启用");
-  assert.equal(state.runLabel, "手动执行");
+  assert.equal(state.toggleLabel, "✅ 启用");
+  assert.equal(state.runLabel, "▶ 手动执行");
 });
 
 test("toggleResultMessage explains re-enable behavior by runtime state", () => {
@@ -97,4 +97,3 @@ test("toggleResultMessage explains re-enable behavior by runtime state", () => {
   assert.equal(ui.toggleResultMessage(false, "queued"), "任务已重新启用：当前请求仍在队列，后续将恢复自动调度");
   assert.equal(ui.toggleResultMessage(false, "idle"), "任务已启用");
 });
-

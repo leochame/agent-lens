@@ -67,6 +67,10 @@ test("friendlyError maps workflow enabled-step backend errors to localized hints
     "Workflow 至少需要 1 个启用步骤。"
   );
   assert.equal(
+    ui.friendlyError("workflow requires at least one step"),
+    "Workflow 至少需要 1 个步骤。"
+  );
+  assert.equal(
     ui.friendlyError("no enabled workflow steps"),
     "Workflow 中没有启用步骤：请至少启用一个步骤。"
   );

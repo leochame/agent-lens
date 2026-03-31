@@ -268,6 +268,63 @@ test("deleteTask cancels running task", async () => {
   }
 });
 
+test("request-level execution overrides do not leak across concurrent runs", async () => {
+  const { scheduler, cleanup } = await createScheduler();
+  try {
+    scheduler.updateSettings({ maxConcurrentRuns: 2 });
+    const t1 = await scheduler.createTask({
+      name: "override-concurrent-1",
+      runner: "custom",
+      prompt: "run",
+      command: 'echo "{prompt}"',
+      intervalSec: 300
+    });
+    const t2 = await scheduler.createTask({
+      name: "override-concurrent-2",
+      runner: "custom",
+      prompt: "run",
+      command: 'echo "{prompt}"',
+      intervalSec: 300
+    });
+
+    const p1 = scheduler.runNow(t1.id, {
+      executionOverrides: {
+        runCommand: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          return {
+            status: "success",
+            exitCode: 0,
+            stdout: "from-task-1",
+            stderr: "",
+            error: null
+          };
+        }
+      }
+    });
+    const p2 = scheduler.runNow(t2.id, {
+      executionOverrides: {
+        runCommand: async () => ({
+          status: "success",
+          exitCode: 0,
+          stdout: "from-task-2",
+          stderr: "",
+          error: null
+        })
+      }
+    });
+
+    const [r1, r2] = await Promise.all([p1, p2]);
+    assert.equal(r1.status, "success");
+    assert.equal(r2.status, "success");
+    assert.match(r1.stdout, /from-task-1/);
+    assert.match(r2.stdout, /from-task-2/);
+    assert.equal(r1.stdout.includes("from-task-2"), false);
+    assert.equal(r2.stdout.includes("from-task-1"), false);
+  } finally {
+    await cleanup();
+  }
+});
+
 test("runNow resolves even if background child keeps stdio open briefly", async () => {
   const { scheduler, cleanup } = await createScheduler();
   try {

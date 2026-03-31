@@ -1,17 +1,12 @@
-export type LoopRunner = "claude_code" | "codex" | "custom";
+import type { RuntimeWorkflowRunner, RuntimeWorkflowStepInput } from "../aiframework/runtime/contracts";
 
-export type WorkflowStep = {
-  name: string;
-  runner?: LoopRunner;
-  cwd?: string | null;
-  command?: string | null;
-  promptAppend?: string;
-  retryCount?: number;
-  retryBackoffMs?: number;
-  // Legacy compatibility field. Runtime does not enforce step timeout.
+export type LoopRunner = RuntimeWorkflowRunner;
+
+export type WorkflowStep = RuntimeWorkflowStepInput;
+
+export type WorkflowStepInputCompat = RuntimeWorkflowStepInput & {
+  // Legacy compatibility field accepted only at scheduler input layer.
   timeoutSec?: number;
-  continueOnError?: boolean;
-  enabled?: boolean;
 };
 
 export type LoopTask = {
@@ -86,7 +81,7 @@ export type CreateLoopTaskInput = {
   runner: LoopRunner;
   prompt: string;
   workflow?: string[] | string;
-  workflowSteps?: WorkflowStep[] | string;
+  workflowSteps?: WorkflowStepInputCompat[] | string;
   workflowCarryContext?: boolean;
   workflowLoopFromStart?: boolean;
   workflowSharedSession?: boolean;

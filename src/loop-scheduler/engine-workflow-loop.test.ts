@@ -5,6 +5,46 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LoopScheduler } from "./engine";
 
+type RuntimeExecutionOverrides = {
+  runCommand?: (
+    command: string,
+    cwd: string,
+    timeoutSec: number,
+    envPatch?: Record<string, string>,
+    hooks?: { onChunk?: (stream: "stdout" | "stderr", chunk: string) => void }
+  ) => Promise<{ status: "success" | "failed"; exitCode: number | null; stdout: string; stderr: string; error: string | null }>;
+  runModel?: (
+    provider: "openai" | "anthropic",
+    prompt: string,
+    cwd: string
+  ) => Promise<{ status: "success" | "failed"; exitCode: number | null; stdout: string; stderr: string; error: string | null }>;
+  runTool?: (call: { name: string; input?: unknown }) => Promise<{ success: boolean; output: string; error: string | null }>;
+};
+
+function setRuntimeExecutionOverrides(
+  scheduler: LoopScheduler,
+  overrides: RuntimeExecutionOverrides
+): void {
+  const subject = scheduler as LoopScheduler & {
+    __testExecutionOverrides?: RuntimeExecutionOverrides;
+    __testOverridesBound?: boolean;
+  };
+  subject.__testExecutionOverrides = overrides;
+  if (subject.__testOverridesBound) {
+    return;
+  }
+
+  const originalRunNow = scheduler.runNow.bind(scheduler);
+  const originalResumeNow = scheduler.resumeNow.bind(scheduler);
+  subject.runNow = (async (taskId: string) => originalRunNow(taskId, {
+    executionOverrides: subject.__testExecutionOverrides
+  })) as LoopScheduler["runNow"];
+  subject.resumeNow = (async (taskId: string, stepIndex?: number | null) => originalResumeNow(taskId, stepIndex, {
+    executionOverrides: subject.__testExecutionOverrides
+  })) as LoopScheduler["resumeNow"];
+  subject.__testOverridesBound = true;
+}
+
 test("workflow loop-from-start runs a second round when enabled", async () => {
   const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-"));
   const marker = join(dir, "round-marker.txt");
@@ -118,20 +158,207 @@ test("workflow step relative cwd resolves against task cwd", async () => {
   }
 });
 
+test("workflow can switch between model runners on different steps", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-model-runners-"));
+  const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
+  await scheduler.init();
+  try {
+    const calls: Array<{ provider: string; prompt: string }> = [];
+    setRuntimeExecutionOverrides(scheduler, {
+      runModel: async (provider, prompt) => {
+        calls.push({ provider, prompt });
+        return {
+          status: "success",
+          exitCode: 0,
+          stdout: `${provider}:ok`,
+          stderr: "",
+          error: null
+        };
+      }
+    });
+
+    const task = await scheduler.createTask({
+      name: "wf-model-switch",
+      runner: "openai",
+      prompt: "model switch",
+      workflowSteps: [
+        { name: "step-openai", enabled: true },
+        { name: "step-anthropic", runner: "anthropic", enabled: true }
+      ],
+      workflowLoopFromStart: false,
+      intervalSec: 300
+    });
+
+    const run = await scheduler.runNow(task.id);
+    assert.equal(run.status, "success");
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].provider, "openai");
+    assert.equal(calls[1].provider, "anthropic");
+    assert.match(calls[0].prompt, /\[Step 1\/2\]/);
+    assert.match(calls[1].prompt, /\[Step 2\/2\]/);
+  } finally {
+    scheduler.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("workflow tool step runs via scheduler tool executor", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-tool-step-"));
+  const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
+  await scheduler.init();
+  try {
+    let commandCalls = 0;
+    const toolCalls: Array<{ name: string; input: unknown }> = [];
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async () => {
+        commandCalls += 1;
+        return {
+          status: "success",
+          exitCode: 0,
+          stdout: "cmd-ok",
+          stderr: "",
+          error: null
+        };
+      },
+      runTool: async (call) => {
+        toolCalls.push({ name: call.name, input: call.input });
+        return {
+          success: true,
+          output: "tool-ok",
+          error: null
+        };
+      }
+    });
+
+    const task = await scheduler.createTask({
+      name: "wf-tool-step",
+      runner: "custom",
+      prompt: "tool step",
+      workflowSteps: [
+        { name: "tool-1", tool: { name: "echo", input: { msg: "hello" } }, enabled: true }
+      ],
+      workflowLoopFromStart: false,
+      intervalSec: 300
+    });
+
+    const run = await scheduler.runNow(task.id);
+    assert.equal(run.status, "success");
+    assert.equal(commandCalls, 0);
+    assert.equal(toolCalls.length, 1);
+    assert.equal(toolCalls[0].name, "echo");
+    assert.deepEqual(toolCalls[0].input, { msg: "hello" });
+  } finally {
+    scheduler.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("scheduler passes workflowCarryContext to agent runtime", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-carry-context-"));
+  const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
+  await scheduler.init();
+  try {
+    let receivedCarryContext: boolean | null = null;
+    const agentRuntime = (scheduler as unknown as {
+      agentRuntime: {
+        executeTask: (req: {
+          task: { workflowCarryContext: boolean };
+        }) => Promise<{
+          status: "success";
+          exitCode: 0;
+          error: null;
+          stdout: string;
+          stderr: string;
+          firstFailure: null;
+        }>;
+      };
+    }).agentRuntime;
+    const originalExecuteTask = agentRuntime.executeTask;
+    agentRuntime.executeTask = async (req) => {
+      receivedCarryContext = req.task.workflowCarryContext;
+      return {
+        status: "success",
+        exitCode: 0,
+        error: null,
+        stdout: "ok",
+        stderr: "",
+        firstFailure: null
+      };
+    };
+
+    const task = await scheduler.createTask({
+      name: "wf-carry-context-pass-through",
+      runner: "custom",
+      prompt: "carry context",
+      workflowSteps: [{ name: "step-1", enabled: true }],
+      workflowCarryContext: true,
+      workflowLoopFromStart: false,
+      intervalSec: 300
+    });
+
+    const run = await scheduler.runNow(task.id);
+    assert.equal(run.status, "success");
+    assert.equal(receivedCarryContext, true);
+    agentRuntime.executeTask = originalExecuteTask;
+  } finally {
+    scheduler.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("scheduler runModel override maps model success and failure", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-model-exec-"));
+  const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
+  await scheduler.init();
+  try {
+    const task = await scheduler.createTask({
+      name: "wf-model-exec-map",
+      runner: "openai",
+      prompt: "model success/fail mapping",
+      workflowSteps: [{ name: "step-1", enabled: true }],
+      workflowLoopFromStart: false,
+      intervalSec: 300
+    });
+
+    setRuntimeExecutionOverrides(scheduler, {
+      runModel: async (_provider, prompt) => ({
+        status: "success",
+        exitCode: 0,
+        stdout: `ok:${prompt.slice(0, 5)}`,
+        stderr: "",
+        error: null
+      })
+    });
+    const okRun = await scheduler.runNow(task.id);
+    assert.equal(okRun.status, "success");
+    assert.match(okRun.stdout, /ok:/);
+
+    setRuntimeExecutionOverrides(scheduler, {
+      runModel: async () => ({
+        status: "failed",
+        exitCode: null,
+        stdout: "",
+        stderr: "",
+        error: "model boom"
+      })
+    });
+    const failedRun = await scheduler.runNow(task.id);
+    assert.equal(failedRun.status, "failed");
+    assert.match(String(failedRun.error), /model boom/);
+  } finally {
+    scheduler.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("workflow shared session uses codex resume with isolated CODEX_HOME", async () => {
   const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-shared-session-"));
   const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
   await scheduler.init();
   try {
     const calls: Array<{ cmd: string; envPatch?: Record<string, string> }> = [];
-    (scheduler as unknown as {
-      executeCommand: (
-        command: string,
-        cwd: string,
-        timeoutSec: number,
-        envPatch?: Record<string, string>
-      ) => Promise<{ status: "success"; exitCode: number; stdout: string; stderr: string; error: null }>;
-    }).executeCommand = async (command, _cwd, _timeoutSec, envPatch) => {
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async (command, _cwd, _timeoutSec, envPatch) => {
       calls.push({ cmd: command, envPatch });
       return {
         status: "success",
@@ -140,7 +367,8 @@ test("workflow shared session uses codex resume with isolated CODEX_HOME", async
         stderr: "",
         error: null
       };
-    };
+      }
+    });
 
     const task = await scheduler.createTask({
       name: "wf-shared-session",
@@ -178,14 +406,8 @@ test("default runner command shell-quotes prompt safely", async () => {
   await scheduler.init();
   try {
     const calls: string[] = [];
-    (scheduler as unknown as {
-      executeCommand: (
-        command: string,
-        cwd: string,
-        timeoutSec: number,
-        envPatch?: Record<string, string>
-      ) => Promise<{ status: "success"; exitCode: number; stdout: string; stderr: string; error: null }>;
-    }).executeCommand = async (command) => {
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async (command) => {
       calls.push(command);
       return {
         status: "success",
@@ -194,7 +416,8 @@ test("default runner command shell-quotes prompt safely", async () => {
         stderr: "",
         error: null
       };
-    };
+      }
+    });
 
     const task = await scheduler.createTask({
       name: "default-runner-quote",
@@ -222,14 +445,8 @@ test("managed codex shared-session command shell-quotes prompt safely across rou
   await scheduler.init();
   try {
     const calls: string[] = [];
-    (scheduler as unknown as {
-      executeCommand: (
-        command: string,
-        cwd: string,
-        timeoutSec: number,
-        envPatch?: Record<string, string>
-      ) => Promise<{ status: "success"; exitCode: number; stdout: string; stderr: string; error: null }>;
-    }).executeCommand = async (command) => {
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async (command) => {
       calls.push(command);
       return {
         status: "success",
@@ -238,7 +455,8 @@ test("managed codex shared-session command shell-quotes prompt safely across rou
         stderr: "",
         error: null
       };
-    };
+      }
+    });
 
     const task = await scheduler.createTask({
       name: "wf-managed-quote",
@@ -276,14 +494,8 @@ test("default claude_code runner shell-quotes prompt safely", async () => {
   await scheduler.init();
   try {
     const calls: string[] = [];
-    (scheduler as unknown as {
-      executeCommand: (
-        command: string,
-        cwd: string,
-        timeoutSec: number,
-        envPatch?: Record<string, string>
-      ) => Promise<{ status: "success"; exitCode: number; stdout: string; stderr: string; error: null }>;
-    }).executeCommand = async (command) => {
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async (command) => {
       calls.push(command);
       return {
         status: "success",
@@ -292,7 +504,8 @@ test("default claude_code runner shell-quotes prompt safely", async () => {
         stderr: "",
         error: null
       };
-    };
+      }
+    });
 
     const task = await scheduler.createTask({
       name: "default-claude-quote",
@@ -320,14 +533,8 @@ test("custom command template shell-quotes prompt safely", async () => {
   await scheduler.init();
   try {
     const calls: string[] = [];
-    (scheduler as unknown as {
-      executeCommand: (
-        command: string,
-        cwd: string,
-        timeoutSec: number,
-        envPatch?: Record<string, string>
-      ) => Promise<{ status: "success"; exitCode: number; stdout: string; stderr: string; error: null }>;
-    }).executeCommand = async (command) => {
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async (command) => {
       calls.push(command);
       return {
         status: "success",
@@ -336,7 +543,8 @@ test("custom command template shell-quotes prompt safely", async () => {
         stderr: "",
         error: null
       };
-    };
+      }
+    });
 
     const task = await scheduler.createTask({
       name: "custom-template-quote",
@@ -364,14 +572,8 @@ test("custom codex command injects full-auto when full-access is disabled", asyn
   await scheduler.init();
   try {
     const calls: string[] = [];
-    (scheduler as unknown as {
-      executeCommand: (
-        command: string,
-        cwd: string,
-        timeoutSec: number,
-        envPatch?: Record<string, string>
-      ) => Promise<{ status: "success"; exitCode: number; stdout: string; stderr: string; error: null }>;
-    }).executeCommand = async (command) => {
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async (command) => {
       calls.push(command);
       return {
         status: "success",
@@ -380,7 +582,8 @@ test("custom codex command injects full-auto when full-access is disabled", asyn
         stderr: "",
         error: null
       };
-    };
+      }
+    });
 
     const task = await scheduler.createTask({
       name: "custom-codex-full-auto",
@@ -411,14 +614,8 @@ test("custom codex command injects danger flag when full-access is enabled", asy
   await scheduler.init();
   try {
     const calls: string[] = [];
-    (scheduler as unknown as {
-      executeCommand: (
-        command: string,
-        cwd: string,
-        timeoutSec: number,
-        envPatch?: Record<string, string>
-      ) => Promise<{ status: "success"; exitCode: number; stdout: string; stderr: string; error: null }>;
-    }).executeCommand = async (command) => {
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async (command) => {
       calls.push(command);
       return {
         status: "success",
@@ -427,7 +624,8 @@ test("custom codex command injects danger flag when full-access is enabled", asy
         stderr: "",
         error: null
       };
-    };
+      }
+    });
 
     const task = await scheduler.createTask({
       name: "custom-codex-danger",
@@ -478,14 +676,8 @@ test("continueOnError failure reports explicit first-failure location", async ()
   await scheduler.init();
   try {
     let callCount = 0;
-    (scheduler as unknown as {
-      executeCommand: (
-        command: string,
-        cwd: string,
-        timeoutSec: number,
-        envPatch?: Record<string, string>
-      ) => Promise<{ status: "success" | "failed"; exitCode: number; stdout: string; stderr: string; error: string | null }>;
-    }).executeCommand = async () => {
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async () => {
       callCount += 1;
       if (callCount === 1) {
         return {
@@ -503,7 +695,8 @@ test("continueOnError failure reports explicit first-failure location", async ()
         stderr: "",
         error: null
       };
-    };
+      }
+    });
 
     const task = await scheduler.createTask({
       name: "continue-on-error-explicit",
@@ -535,14 +728,8 @@ test("workflow step retries on retryable upstream/network failure and succeeds",
   await scheduler.init();
   try {
     let callCount = 0;
-    (scheduler as unknown as {
-      executeCommand: (
-        command: string,
-        cwd: string,
-        timeoutSec: number,
-        envPatch?: Record<string, string>
-      ) => Promise<{ status: "success" | "failed"; exitCode: number | null; stdout: string; stderr: string; error: string | null }>;
-    }).executeCommand = async () => {
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async () => {
       callCount += 1;
       if (callCount === 1) {
         return {
@@ -560,7 +747,8 @@ test("workflow step retries on retryable upstream/network failure and succeeds",
         stderr: "",
         error: null
       };
-    };
+      }
+    });
 
     const task = await scheduler.createTask({
       name: "retry-upstream-once",
@@ -590,14 +778,8 @@ test("workflow step does not retry non-network command failures", async () => {
   await scheduler.init();
   try {
     let callCount = 0;
-    (scheduler as unknown as {
-      executeCommand: (
-        command: string,
-        cwd: string,
-        timeoutSec: number,
-        envPatch?: Record<string, string>
-      ) => Promise<{ status: "success" | "failed"; exitCode: number | null; stdout: string; stderr: string; error: string | null }>;
-    }).executeCommand = async () => {
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async () => {
       callCount += 1;
       return {
         status: "failed",
@@ -606,7 +788,8 @@ test("workflow step does not retry non-network command failures", async () => {
         stderr: "sed: src/main/resources/application.yml: No such file or directory",
         error: null
       };
-    };
+      }
+    });
 
     const task = await scheduler.createTask({
       name: "retry-non-network-none",
@@ -634,14 +817,8 @@ test("workflow step does not retry generic timeout without network context", asy
   await scheduler.init();
   try {
     let callCount = 0;
-    (scheduler as unknown as {
-      executeCommand: (
-        command: string,
-        cwd: string,
-        timeoutSec: number,
-        envPatch?: Record<string, string>
-      ) => Promise<{ status: "success" | "failed"; exitCode: number | null; stdout: string; stderr: string; error: string | null }>;
-    }).executeCommand = async () => {
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async () => {
       callCount += 1;
       return {
         status: "failed",
@@ -650,7 +827,8 @@ test("workflow step does not retry generic timeout without network context", asy
         stderr: "Jest timeout of 5000ms exceeded while waiting for done() to be called.",
         error: null
       };
-    };
+      }
+    });
 
     const task = await scheduler.createTask({
       name: "retry-generic-timeout-none",
@@ -679,14 +857,8 @@ test("workflow failure records checkpoint and resumeNow continues from failed st
   try {
     const calls: string[] = [];
     let step2Failures = 0;
-    (scheduler as unknown as {
-      executeCommand: (
-        command: string,
-        cwd: string,
-        timeoutSec: number,
-        envPatch?: Record<string, string>
-      ) => Promise<{ status: "success" | "failed"; exitCode: number; stdout: string; stderr: string; error: string | null }>;
-    }).executeCommand = async (command) => {
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async (command) => {
       calls.push(command);
       if (command.includes("[Step 2/2]") && step2Failures === 0) {
         step2Failures += 1;
@@ -705,7 +877,8 @@ test("workflow failure records checkpoint and resumeNow continues from failed st
         stderr: "",
         error: null
       };
-    };
+      }
+    });
 
     const task = await scheduler.createTask({
       name: "workflow-resume-checkpoint",
@@ -745,14 +918,8 @@ test("workflow loop-from-start can stop after current round completes", async ()
   await scheduler.init();
   try {
     const calls: string[] = [];
-    (scheduler as unknown as {
-      executeCommand: (
-        command: string,
-        cwd: string,
-        timeoutSec: number,
-        envPatch?: Record<string, string>
-      ) => Promise<{ status: "success"; exitCode: number; stdout: string; stderr: string; error: null }>;
-    }).executeCommand = async (command) => {
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async (command) => {
       calls.push(command);
       await new Promise((resolve) => setTimeout(resolve, 30));
       return {
@@ -762,7 +929,8 @@ test("workflow loop-from-start can stop after current round completes", async ()
         stderr: "",
         error: null
       };
-    };
+      }
+    });
 
     const task = await scheduler.createTask({
       name: "workflow-stop-after-round",
@@ -800,14 +968,8 @@ test("workflow loop-from-start stops before next round when continueOnError capt
   await scheduler.init();
   try {
     const calls: string[] = [];
-    (scheduler as unknown as {
-      executeCommand: (
-        command: string,
-        cwd: string,
-        timeoutSec: number,
-        envPatch?: Record<string, string>
-      ) => Promise<{ status: "success" | "failed"; exitCode: number; stdout: string; stderr: string; error: string | null }>;
-    }).executeCommand = async (command) => {
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async (command) => {
       calls.push(command);
       if (command.includes("[Step 1/2]")) {
         return {
@@ -825,7 +987,8 @@ test("workflow loop-from-start stops before next round when continueOnError capt
         stderr: "",
         error: null
       };
-    };
+      }
+    });
 
     const task = await scheduler.createTask({
       name: "workflow-stop-on-round-failure",
@@ -857,14 +1020,8 @@ test("workflow definition update clears stale resume checkpoint", async () => {
   await scheduler.init();
   try {
     let step2Failures = 0;
-    (scheduler as unknown as {
-      executeCommand: (
-        command: string,
-        cwd: string,
-        timeoutSec: number,
-        envPatch?: Record<string, string>
-      ) => Promise<{ status: "success" | "failed"; exitCode: number; stdout: string; stderr: string; error: string | null }>;
-    }).executeCommand = async (command) => {
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async (command) => {
       if (command.includes("[Step 2/2]") && step2Failures === 0) {
         step2Failures += 1;
         return {
@@ -882,7 +1039,8 @@ test("workflow definition update clears stale resume checkpoint", async () => {
         stderr: "",
         error: null
       };
-    };
+      }
+    });
 
     const task = await scheduler.createTask({
       name: "workflow-clear-checkpoint",
@@ -919,14 +1077,8 @@ test("non-workflow update keeps resume checkpoint when workflow payload is uncha
   await scheduler.init();
   try {
     let step2Failures = 0;
-    (scheduler as unknown as {
-      executeCommand: (
-        command: string,
-        cwd: string,
-        timeoutSec: number,
-        envPatch?: Record<string, string>
-      ) => Promise<{ status: "success" | "failed"; exitCode: number; stdout: string; stderr: string; error: string | null }>;
-    }).executeCommand = async (command) => {
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async (command) => {
       if (command.includes("[Step 2/2]") && step2Failures === 0) {
         step2Failures += 1;
         return {
@@ -944,7 +1096,8 @@ test("non-workflow update keeps resume checkpoint when workflow payload is uncha
         stderr: "",
         error: null
       };
-    };
+      }
+    });
 
     const task = await scheduler.createTask({
       name: "workflow-keep-checkpoint",

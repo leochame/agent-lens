@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { RuntimeAgentRuntimeExecutionOverrides } from "../aiframework/runtime/contracts";
 import { LoopScheduler } from "./engine";
 
 async function waitFor(predicate: () => boolean, timeoutMs = 2500): Promise<void> {
@@ -21,30 +22,22 @@ test("live runs expose in-progress events and are removed after finish", async (
   const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
   await scheduler.init();
   try {
-    (scheduler as unknown as {
-      executeCommand: (
-        command: string,
-        cwd: string,
-        timeoutSec: number,
-        envPatch?: Record<string, string>,
-        onChunk?: (stream: "stdout" | "stderr", chunk: string) => void
-      ) => Promise<{ status: "success"; exitCode: number; stdout: string; stderr: string; error: null }>;
-    }).executeCommand = async (_command, _cwd, _timeoutSec, _envPatch, onChunk) => {
-      await new Promise((resolve) => {
-        setTimeout(() => {
-          if (onChunk) {
-            onChunk("stdout", "hello from live stream\n");
-          }
-        }, 180);
-        setTimeout(resolve, 620);
-      });
-      return {
-        status: "success",
-        exitCode: 0,
-        stdout: "step-ok\n",
-        stderr: "",
-        error: null
-      };
+    const executionOverrides: RuntimeAgentRuntimeExecutionOverrides = {
+      runCommand: async (_command, _cwd, _timeoutSec, _envPatch, hooks) => {
+        await new Promise((resolve) => {
+          setTimeout(() => {
+            hooks?.onChunk?.("stdout", "hello from live stream\n");
+          }, 180);
+          setTimeout(resolve, 620);
+        });
+        return {
+          status: "success" as const,
+          exitCode: 0,
+          stdout: "step-ok\n",
+          stderr: "",
+          error: null
+        };
+      }
     };
 
     const task = await scheduler.createTask({
@@ -57,7 +50,7 @@ test("live runs expose in-progress events and are removed after finish", async (
       timeoutSec: 60
     });
 
-    const pendingRun = scheduler.runNow(task.id);
+    const pendingRun = scheduler.runNow(task.id, { executionOverrides });
     await waitFor(() => scheduler.listLiveRuns().length === 1);
     await waitFor(() => {
       const item = scheduler.listLiveRuns()[0];
@@ -66,6 +59,8 @@ test("live runs expose in-progress events and are removed after finish", async (
     const live = scheduler.listLiveRuns()[0];
     assert.equal(live.taskId, task.id);
     assert.equal(live.phase, "running");
+    assert.equal(live.stepIndex, 1);
+    assert.equal(live.totalSteps, 1);
     assert.ok(live.events.length > 0);
     assert.equal(typeof live.silenceSec, "number");
     assert.equal(live.heartbeatStale, false);
@@ -85,21 +80,17 @@ test("live run exposes stale heartbeat state when heartbeat is too old", async (
   const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
   await scheduler.init();
   try {
-    (scheduler as unknown as {
-      executeCommand: (
-        command: string,
-        cwd: string,
-        timeoutSec: number
-      ) => Promise<{ status: "success"; exitCode: number; stdout: string; stderr: string; error: null }>;
-    }).executeCommand = async () => {
-      await new Promise((resolve) => setTimeout(resolve, 700));
-      return {
-        status: "success",
-        exitCode: 0,
-        stdout: "ok\n",
-        stderr: "",
-        error: null
-      };
+    const executionOverrides: RuntimeAgentRuntimeExecutionOverrides = {
+      runCommand: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        return {
+          status: "success" as const,
+          exitCode: 0,
+          stdout: "ok\n",
+          stderr: "",
+          error: null
+        };
+      }
     };
 
     const task = await scheduler.createTask({
@@ -111,10 +102,10 @@ test("live run exposes stale heartbeat state when heartbeat is too old", async (
       intervalSec: 300
     });
 
-    const pendingRun = scheduler.runNow(task.id);
+    const pendingRun = scheduler.runNow(task.id, { executionOverrides });
     await waitFor(() => scheduler.listLiveRuns().length === 1);
     const runId = scheduler.listLiveRuns()[0].id;
-    const liveMap = (scheduler as unknown as { liveRuns: Map<string, { heartbeatAt: string }> }).liveRuns;
+    const liveMap = (scheduler as unknown as { liveRunState: { liveRuns: Map<string, { heartbeatAt: string }> } }).liveRunState.liveRuns;
     const item = liveMap.get(runId);
     assert.ok(item);
     item!.heartbeatAt = new Date(Date.now() - 45_000).toISOString();

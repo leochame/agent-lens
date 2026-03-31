@@ -26,8 +26,23 @@ test("mode panel mounts workflow and command sections separately", () => {
 
   assert.match(script, /if \(mode === "workflow"\)/);
   assert.match(script, /id="workflowBuilderField"/);
+  assert.match(script, /data-k="stepType"/);
+  assert.match(script, /data-k="toolName"/);
+  assert.match(script, /data-k="toolInput"/);
   assert.match(script, /workflowCarryContextEl = null;/);
   assert.match(script, /workflowLoopFromStartEl = null;/);
+});
+
+test("runner selector exposes model and cli runners and form uses selected runner", () => {
+  const html = renderLoopHtml();
+  const script = extractScript(html);
+
+  assert.match(html, /<option value="custom" selected>custom<\/option>/);
+  assert.match(html, /<option value="codex">codex<\/option>/);
+  assert.match(html, /<option value="claude_code">claude_code<\/option>/);
+  assert.match(html, /<option value="openai">openai<\/option>/);
+  assert.match(html, /<option value="anthropic">anthropic<\/option>/);
+  assert.match(script, /runner: String\(document\.getElementById\("runner"\)\.value \|\| "custom"\)/);
 });
 
 test("loop page inline script remains syntactically valid", () => {

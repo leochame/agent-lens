@@ -7,17 +7,8 @@ type TaskStorePayload = {
 };
 
 function stripTimeoutFields(task: LoopTask): Record<string, unknown> {
-  const workflowSteps = Array.isArray(task.workflowSteps)
-    ? task.workflowSteps.map((step) => {
-      const { timeoutSec: _timeoutSec, ...rest } = step as typeof step & { timeoutSec?: number };
-      return rest;
-    })
-    : [];
   const { timeoutSec: _timeoutSec, ...rest } = task;
-  return {
-    ...rest,
-    workflowSteps
-  };
+  return rest;
 }
 
 export class LoopTaskStore {

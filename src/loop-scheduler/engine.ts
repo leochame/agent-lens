@@ -1,553 +1,42 @@
 import { randomUUID } from "node:crypto";
-import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { mkdir, stat } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { ChildProcessWithoutNullStreams } from "node:child_process";
+import { AgentRuntime } from "../aiframework/runtime/agent-runtime";
+import {
+  RuntimeAgentRuntimeExecutionOverrides
+} from "../aiframework/runtime/contracts";
+import { LiveRunState } from "./live-run-state";
+import { createImmediateRun, findQueuedRunByTaskId, shouldSilentlySkipTimerConflict } from "./queue-control";
 import { LoopTaskStore } from "./store";
+import {
+  clamp,
+  ensureValidNumericPatch,
+  ensureWorkflowHasEnabledSteps,
+  ensureWorkflowList,
+  ensureWorkflowSteps,
+  hasNoEnabledWorkflowSteps,
+  isWorkflowDefinitionEqual,
+  normalizeLoadedTask,
+  normalizeOptionalPositiveInt,
+  normalizeTaskInput,
+  nowIso,
+  parseBoundedNumber,
+  parseOptionalBoolean
+} from "./task-normalization";
 import {
   CreateLoopTaskInput,
   LoopRun,
   LoopRunLive,
-  LoopRunLiveEvent,
-  LoopRunner,
   LoopTask,
   UpdateLoopTaskInput,
   WorkflowStep
 } from "./types";
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
-function clamp(n: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, n));
-}
-
-function parseBoundedNumber(value: unknown, min: number, max: number): number | undefined {
-  const n = Number(value);
-  if (!Number.isFinite(n)) {
-    return undefined;
-  }
-  return clamp(n, min, max);
-}
-
-function normalizeOptionalPositiveInt(value: unknown): number | null {
-  if (value == null) {
-    return null;
-  }
-  const num = Number(value);
-  if (!Number.isFinite(num)) {
-    return null;
-  }
-  const rounded = Math.floor(num);
-  return rounded >= 1 ? rounded : null;
-}
-
-function normalizeIsoOrFallback(value: unknown, fallback: string): string {
-  const text = String(value ?? "").trim();
-  if (!text) {
-    return fallback;
-  }
-  const ms = Date.parse(text);
-  if (!Number.isFinite(ms)) {
-    return fallback;
-  }
-  return new Date(ms).toISOString();
-}
-
-function normalizeOptionalIso(value: unknown): string | null {
-  if (value == null) {
-    return null;
-  }
-  const text = String(value).trim();
-  if (!text) {
-    return null;
-  }
-  const ms = Date.parse(text);
-  if (!Number.isFinite(ms)) {
-    return null;
-  }
-  return new Date(ms).toISOString();
-}
-
-function ensureValidNumericPatch(
-  raw: CreateLoopTaskInput | UpdateLoopTaskInput,
-  normalized: UpdateLoopTaskInput
-): void {
-  if (raw.intervalSec !== undefined && normalized.intervalSec === undefined) {
-    throw new Error("intervalSec must be a number between 5 and 86400");
-  }
-}
-
-function normalizeRunner(value: unknown): LoopRunner {
-  if (value === "claude_code" || value === "codex" || value === "custom") {
-    return value;
-  }
-  return "custom";
-}
-
-function normalizeTaskInput(raw: CreateLoopTaskInput | UpdateLoopTaskInput): UpdateLoopTaskInput {
-  const next: UpdateLoopTaskInput = {};
-  if (raw.name !== undefined) {
-    next.name = String(raw.name ?? "").trim();
-  }
-  if (raw.prompt !== undefined) {
-    next.prompt = String(raw.prompt ?? "").trim();
-  }
-  if (raw.workflow !== undefined) {
-    const value = raw.workflow;
-    const list = Array.isArray(value)
-      ? value
-      : String(value ?? "")
-          .split("\n")
-          .map((item) => item.trim())
-          .filter(Boolean);
-    next.workflow = list;
-  }
-  if (raw.workflowSteps !== undefined) {
-    const value = raw.workflowSteps;
-    if (Array.isArray(value)) {
-      next.workflowSteps = value;
-    } else {
-      next.workflowSteps = String(value ?? "")
-        .split("\n")
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .map((name) => ({ name }));
-    }
-  }
-  if (raw.workflowCarryContext !== undefined) {
-    // Legacy no-op: workflowCarryContext is accepted for backward compatibility, but context carry is disabled.
-  }
-  if (raw.workflowLoopFromStart !== undefined) {
-    const value = parseOptionalBoolean(raw.workflowLoopFromStart);
-    if (value !== undefined) {
-      next.workflowLoopFromStart = value;
-    }
-  }
-  if (raw.workflowSharedSession !== undefined) {
-    const value = parseOptionalBoolean(raw.workflowSharedSession);
-    if (value !== undefined) {
-      next.workflowSharedSession = value;
-    }
-  }
-  if (raw.workflowFullAccess !== undefined) {
-    const value = parseOptionalBoolean(raw.workflowFullAccess);
-    if (value !== undefined) {
-      next.workflowFullAccess = value;
-    }
-  }
-  if (raw.runner !== undefined) {
-    next.runner = normalizeRunner(raw.runner);
-  }
-  if (raw.intervalSec !== undefined) {
-    const parsed = parseBoundedNumber(raw.intervalSec, 5, 86400);
-    if (parsed !== undefined) {
-      next.intervalSec = parsed;
-    }
-  }
-  if (raw.timeoutSec !== undefined) {
-    // Legacy no-op: timeoutSec is accepted for backward compatibility, but loop tasks do not enforce timeouts.
-  }
-  if (raw.enabled !== undefined) {
-    const value = parseOptionalBoolean(raw.enabled);
-    if (value !== undefined) {
-      next.enabled = value;
-    }
-  }
-  if (raw.cwd !== undefined) {
-    const value = raw.cwd == null ? null : String(raw.cwd).trim();
-    next.cwd = value ? value : null;
-  }
-  if (raw.command !== undefined) {
-    const value = raw.command == null ? null : String(raw.command).trim();
-    next.command = value ? value : null;
-  }
-  return next;
-}
-
-function buildCommand(runner: LoopRunner, command: string | null | undefined, prompt: string, fullAccess = false): string {
-  if (command) {
-    const interpolated = interpolatePromptTemplate(command, prompt);
-    return injectCodexAccessFlag(interpolated, fullAccess);
-  }
-  if (runner === "claude_code") {
-    return `claude -p ${shellQuoteArg(prompt)}`;
-  }
-  if (runner === "codex") {
-    const accessFlag = fullAccess
-      ? "--dangerously-bypass-approvals-and-sandbox"
-      : "--full-auto";
-    return `codex exec ${accessFlag} ${shellQuoteArg(prompt)}`;
-  }
-  return "";
-}
-
-function interpolatePromptTemplate(commandTemplate: string, prompt: string): string {
-  const quotedPrompt = shellQuoteArg(prompt);
-  return String(commandTemplate)
-    .replaceAll('"{prompt}"', quotedPrompt)
-    .replaceAll("'{prompt}'", quotedPrompt)
-    .replaceAll("{prompt}", quotedPrompt);
-}
-
-function hasCodexAccessFlag(command: string): boolean {
-  const normalized = normalizeSpace(command);
-  return normalized.includes("--full-auto")
-    || normalized.includes("--dangerously-bypass-approvals-and-sandbox");
-}
-
-function injectCodexAccessFlag(command: string, fullAccess: boolean): string {
-  if (!command || hasCodexAccessFlag(command)) {
-    return command;
-  }
-  const accessFlag = fullAccess
-    ? "--dangerously-bypass-approvals-and-sandbox"
-    : "--full-auto";
-  const resumePrefix = /^(\s*codex\s+exec\s+resume(?:\s+--last)?(?:\s+--all)?)(?=\s|$)/;
-  if (resumePrefix.test(command)) {
-    return command.replace(resumePrefix, `$1 ${accessFlag}`);
-  }
-  const execPrefix = /^(\s*codex\s+exec)(?=\s|$)/;
-  if (execPrefix.test(command)) {
-    return command.replace(execPrefix, `$1 ${accessFlag}`);
-  }
-  return command;
-}
-
-function normalizeSpace(value: string): string {
-  return value.trim().replace(/\s+/g, " ");
-}
-
-function isDefaultCodexTemplate(command: string | null | undefined): boolean {
-  if (!command) {
-    return false;
-  }
-  const normalized = normalizeSpace(command);
-  return normalized === 'codex exec "{prompt}"'
-    || normalized === 'codex exec --full-auto "{prompt}"'
-    || normalized === 'codex exec --dangerously-bypass-approvals-and-sandbox "{prompt}"';
-}
-
-function shouldUseManagedCodexSession(
-  task: LoopTask,
-  step: WorkflowStep,
-  effectiveRunner: LoopRunner
-): boolean {
-  if (!task.workflowSharedSession) {
-    return false;
-  }
-  if (effectiveRunner === "codex" && !step.command && !task.command) {
-    return true;
-  }
-  const candidate = step.command ?? task.command ?? null;
-  return isDefaultCodexTemplate(candidate);
-}
-
-function buildManagedCodexCommand(prompt: string, resume: boolean, fullAccess: boolean): string {
-  const accessFlag = fullAccess
-    ? "--dangerously-bypass-approvals-and-sandbox"
-    : "--full-auto";
-  if (resume) {
-    return `codex exec resume --last --all ${accessFlag} --skip-git-repo-check ${shellQuoteArg(prompt)}`;
-  }
-  return `codex exec ${accessFlag} --skip-git-repo-check ${shellQuoteArg(prompt)}`;
-}
-
-function codexSessionHomeForTask(taskId: string): string {
-  return join(process.cwd(), ".agentlens", "codex-sessions", taskId);
-}
-
-function buildTaskPrompt(basePrompt: string, stepText: string, stepIndex: number, stepCount: number): string {
-  const stepTitle = `[Step ${stepIndex + 1}/${stepCount}] ${stepText}`;
-  const cleanBase = normalizePrompt(basePrompt);
-  if (!cleanBase) {
-    return stepTitle;
-  }
-  return `${cleanBase}\n\n${stepTitle}`;
-}
-
-function ensureWorkflowList(value: string[] | string | undefined): string[] {
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item || "").trim()).filter(Boolean);
-  }
-  if (typeof value === "string") {
-    return value
-      .split("\n")
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-  return [];
-}
-
-function parseOptionalBoolean(value: unknown): boolean | undefined {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "number") {
-    return value !== 0;
-  }
-  if (typeof value === "string") {
-    const text = value.trim().toLowerCase();
-    if (text === "true" || text === "1" || text === "yes" || text === "on") {
-      return true;
-    }
-    if (text === "false" || text === "0" || text === "no" || text === "off" || text === "") {
-      return false;
-    }
-  }
-  return undefined;
-}
-
-const STEP_RETRY_COUNT_MIN = 0;
-const STEP_RETRY_COUNT_MAX = 8;
-const STEP_RETRY_BACKOFF_MS_MIN = 200;
-const STEP_RETRY_BACKOFF_MS_MAX = 30000;
-const STEP_RETRY_BACKOFF_DEFAULT_MS = 1200;
-const STEP_RETRY_BACKOFF_CAP_MS = 60000;
-
-function normalizeStepRetryCount(value: unknown): number {
-  return parseBoundedNumber(value, STEP_RETRY_COUNT_MIN, STEP_RETRY_COUNT_MAX) ?? 0;
-}
-
-function normalizeStepRetryBackoffMs(value: unknown): number {
-  return parseBoundedNumber(value, STEP_RETRY_BACKOFF_MS_MIN, STEP_RETRY_BACKOFF_MS_MAX)
-    ?? STEP_RETRY_BACKOFF_DEFAULT_MS;
-}
-
-function computeStepRetryDelayMs(baseDelayMs: number, retryAttempt: number): number {
-  const exponent = Math.max(0, retryAttempt - 1);
-  const delay = Math.floor(baseDelayMs * (2 ** exponent));
-  return Math.max(0, Math.min(delay, STEP_RETRY_BACKOFF_CAP_MS));
-}
-
-function isRetryableUpstreamFailure(result: CommandExecutionResult): boolean {
-  if (result.status === "success" || result.status === "cancelled") {
-    return false;
-  }
-  const merged = `${result.error || ""}\n${result.stderr || ""}\n${result.stdout || ""}`;
-  const text = merged.toLowerCase();
-  if (!text.trim()) {
-    return false;
-  }
-  const hasNetworkContext = /(http|status|upstream|gateway|cloudflare|cf-ray|socket|connect|tls|dns|network|econn|enotfound|ehostunreach)/.test(text);
-  if (/(^|\b)(http|status|statuscode|status_code|code)\s*[:=]?\s*[45]\d{2}(\b|$)/i.test(merged)) {
-    return true;
-  }
-  if (/\b(?:4\d{2}|5\d{2})\b/.test(text) && /(http|status|upstream|gateway|cloudflare|cf-ray)/.test(text)) {
-    return true;
-  }
-  if (/\b(?:timeout|timed out)\b/.test(text) && hasNetworkContext) {
-    return true;
-  }
-  return [
-    "cloudflare",
-    "cf-ray",
-    "upstream",
-    "gateway timeout",
-    "too many requests",
-    "rate limit",
-    "network error",
-    "socket hang up",
-    "etimedout",
-    "econnreset",
-    "econnrefused",
-    "ehostunreach",
-    "enotfound",
-    "tls handshake",
-    "service unavailable",
-    "bad gateway"
-  ].some((keyword) => text.includes(keyword));
-}
-
-function ensureWorkflowSteps(
-  stepsValue: WorkflowStep[] | string | undefined,
-  workflowFallback: string[]
-): WorkflowStep[] {
-  if (Array.isArray(stepsValue)) {
-    return stepsValue
-      .map((step) => {
-        const continueOnError = parseOptionalBoolean(step && step.continueOnError);
-        const enabled = parseOptionalBoolean(step && step.enabled);
-        return {
-          name: String(step && step.name ? step.name : "").trim(),
-          runner: step && step.runner ? normalizeRunner(step.runner) : undefined,
-          cwd: step && step.cwd != null ? String(step.cwd).trim() || null : undefined,
-          command: step && step.command != null ? String(step.command).trim() || null : undefined,
-          promptAppend: step && step.promptAppend ? String(step.promptAppend).trim() : undefined,
-          retryCount: normalizeStepRetryCount(step && step.retryCount),
-          retryBackoffMs: normalizeStepRetryBackoffMs(step && step.retryBackoffMs),
-          timeoutSec: undefined,
-          continueOnError: continueOnError ?? false,
-          enabled: enabled ?? true
-        };
-      })
-      .filter((step) => step.name);
-  }
-  if (typeof stepsValue === "string" && stepsValue.trim()) {
-    return stepsValue
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((name) => ({
-        name,
-        enabled: true,
-        continueOnError: false,
-        retryCount: 0,
-        retryBackoffMs: STEP_RETRY_BACKOFF_DEFAULT_MS
-      }));
-  }
-  return workflowFallback.map((name) => ({
-    name,
-    enabled: true,
-    continueOnError: false,
-    retryCount: 0,
-    retryBackoffMs: STEP_RETRY_BACKOFF_DEFAULT_MS
-  }));
-}
-
-function ensureWorkflowHasEnabledSteps(workflowSteps: WorkflowStep[]): void {
-  if (workflowSteps.length > 0 && workflowSteps.every((step) => step.enabled === false)) {
-    throw new Error("workflow must have at least one enabled step");
-  }
-}
-
-function normalizeWorkflowForDiff(workflow: string[]): string[] {
-  return workflow.map((item) => String(item || "").trim());
-}
-
-function normalizeWorkflowStepForDiff(step: WorkflowStep): {
-  name: string;
-  runner: string | null;
-  cwd: string | null;
-  command: string | null;
-  promptAppend: string | null;
-  retryCount: number;
-  retryBackoffMs: number;
-  continueOnError: boolean;
-  enabled: boolean;
-} {
-  return {
-    name: String(step && step.name ? step.name : "").trim(),
-    runner: step && step.runner ? String(step.runner) : null,
-    cwd: step && step.cwd != null ? String(step.cwd).trim() || null : null,
-    command: step && step.command != null ? String(step.command).trim() || null : null,
-    promptAppend: step && step.promptAppend ? String(step.promptAppend).trim() || null : null,
-    retryCount: normalizeStepRetryCount(step && step.retryCount),
-    retryBackoffMs: normalizeStepRetryBackoffMs(step && step.retryBackoffMs),
-    continueOnError: parseOptionalBoolean(step && step.continueOnError) ?? false,
-    enabled: parseOptionalBoolean(step && step.enabled) ?? true
-  };
-}
-
-function isWorkflowDefinitionEqual(
-  leftWorkflow: string[],
-  leftSteps: WorkflowStep[],
-  rightWorkflow: string[],
-  rightSteps: WorkflowStep[]
-): boolean {
-  const left = {
-    workflow: normalizeWorkflowForDiff(leftWorkflow),
-    workflowSteps: leftSteps.map(normalizeWorkflowStepForDiff)
-  };
-  const right = {
-    workflow: normalizeWorkflowForDiff(rightWorkflow),
-    workflowSteps: rightSteps.map(normalizeWorkflowStepForDiff)
-  };
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
-function hasNoEnabledWorkflowSteps(task: LoopTask): boolean {
-  return Array.isArray(task.workflowSteps)
-    && task.workflowSteps.length > 0
-    && task.workflowSteps.every((step) => step.enabled === false);
-}
-
-function normalizeLoadedTask(raw: LoopTask): LoopTask {
-  const now = nowIso();
-  const workflow = ensureWorkflowList((raw as Partial<LoopTask>).workflow as string[] | string | undefined);
-  const workflowSteps = ensureWorkflowSteps((raw as Partial<LoopTask>).workflowSteps, workflow);
-  const workflowLoopFromStart = parseOptionalBoolean((raw as Partial<LoopTask>).workflowLoopFromStart);
-  const workflowSharedSession = parseOptionalBoolean((raw as Partial<LoopTask>).workflowSharedSession);
-  const workflowFullAccess = parseOptionalBoolean((raw as Partial<LoopTask>).workflowFullAccess);
-  const workflowResumeStepIndex = normalizeOptionalPositiveInt((raw as Partial<LoopTask>).workflowResumeStepIndex);
-  const workflowResumeUpdatedAt = normalizeOptionalIso((raw as Partial<LoopTask>).workflowResumeUpdatedAt);
-  const workflowResumeReasonRaw = (raw as Partial<LoopTask>).workflowResumeReason;
-  const workflowResumeReason = workflowResumeReasonRaw == null ? null : String(workflowResumeReasonRaw).trim() || null;
-  const intervalSec = parseBoundedNumber((raw as Partial<LoopTask>).intervalSec, 5, 86400) ?? 300;
-  const timeoutSec = 0;
-  const enabled = parseOptionalBoolean((raw as Partial<LoopTask>).enabled) ?? true;
-  const runner = normalizeRunner((raw as Partial<LoopTask>).runner);
-  const cwdRaw = (raw as Partial<LoopTask>).cwd;
-  const commandRaw = (raw as Partial<LoopTask>).command;
-  return {
-    ...raw,
-    runner,
-    intervalSec,
-    timeoutSec,
-    enabled,
-    cwd: cwdRaw == null ? null : String(cwdRaw).trim() || null,
-    command: commandRaw == null ? null : String(commandRaw).trim() || null,
-    createdAt: normalizeIsoOrFallback((raw as Partial<LoopTask>).createdAt, now),
-    updatedAt: normalizeIsoOrFallback((raw as Partial<LoopTask>).updatedAt, now),
-    lastRunAt: normalizeOptionalIso((raw as Partial<LoopTask>).lastRunAt),
-    workflow,
-    workflowSteps,
-    workflowCarryContext: false,
-    workflowLoopFromStart: workflowLoopFromStart ?? false,
-    workflowSharedSession: workflowSharedSession ?? true,
-    workflowFullAccess: workflowFullAccess ?? false,
-    workflowResumeStepIndex,
-    workflowResumeUpdatedAt,
-    workflowResumeReason
-  };
-}
-
-function normalizePrompt(prompt: string): string {
-  return String(prompt ?? "").trim();
-}
-
-function shellQuoteArg(value: string): string {
-  return `'${String(value).replace(/'/g, `'\"'\"'`)}'`;
-}
-
-async function resolveExecutionContext(
-  cwdInput: string | null,
-  prompt: string,
-  baseCwd?: string
-): Promise<{ cwd: string; prompt: string }> {
-  const cleanPrompt = normalizePrompt(prompt);
-  if (!cwdInput) {
-    return { cwd: process.cwd(), prompt: cleanPrompt };
-  }
-
-  const targetPath = baseCwd && !isAbsolute(cwdInput) ? resolve(baseCwd, cwdInput) : resolve(cwdInput);
-  let details;
-  try {
-    details = await stat(targetPath);
-  } catch {
-    throw new Error(`path not found: ${targetPath}`);
-  }
-
-  if (details.isDirectory()) {
-    return { cwd: targetPath, prompt: cleanPrompt };
-  }
-  if (details.isFile()) {
-    return {
-      cwd: dirname(targetPath),
-      prompt: `${cleanPrompt}\n\nFocus file: ${targetPath}`
-    };
-  }
-  throw new Error(`path must be a directory or file: ${targetPath}`);
-}
 
 type RunTaskOptions = {
   persistTaskState: boolean;
   recordRun: boolean;
   restartIfRunning?: boolean;
   resumeStepIndex?: number | null;
+  executionOverrides?: RuntimeAgentRuntimeExecutionOverrides;
 };
 
 type QueuedRun = {
@@ -558,29 +47,6 @@ type QueuedRun = {
   resolveRuns: Array<(run: LoopRun) => void>;
 };
 
-type CommandExecutionResult = {
-  status: "success" | "failed" | "timeout" | "cancelled";
-  exitCode: number | null;
-  stdout: string;
-  stderr: string;
-  error: string | null;
-};
-
-type FirstFailureInfo = {
-  result: CommandExecutionResult;
-  round: number;
-  stepIndex: number;
-  stepCount: number;
-  stepName: string;
-};
-
-type StreamChunkListener = (stream: "stdout" | "stderr", chunk: string) => void;
-type HeartbeatListener = () => void;
-
-const LIVE_EVENT_LIMIT = 120;
-const LIVE_OUTPUT_TAIL_LIMIT = 5000;
-const LIVE_HEARTBEAT_STALE_SEC = 30;
-
 type RunningTaskControl = {
   runId: string;
   cancelReason: string | null;
@@ -590,17 +56,19 @@ type RunningTaskControl = {
 
 export class LoopScheduler {
   private readonly store: LoopTaskStore;
+  private readonly agentRuntime: AgentRuntime;
   private readonly tasks: Map<string, LoopTask> = new Map();
   private readonly timers: Map<string, NodeJS.Timeout> = new Map();
   private readonly running: Set<string> = new Set();
   private readonly runningControls: Map<string, RunningTaskControl> = new Map();
   private readonly runs: LoopRun[] = [];
-  private readonly liveRuns: Map<string, LoopRunLive> = new Map();
+  private readonly liveRunState: LiveRunState = new LiveRunState();
   private readonly queue: QueuedRun[] = [];
   private maxConcurrentRuns = 4;
 
   constructor(storePath: string) {
     this.store = new LoopTaskStore(storePath);
+    this.agentRuntime = new AgentRuntime();
   }
 
   async init(): Promise<void> {
@@ -628,23 +96,7 @@ export class LoopScheduler {
   }
 
   listLiveRuns(limit = 20): LoopRunLive[] {
-    const n = clamp(limit, 1, 100);
-    const now = Date.now();
-    return Array.from(this.liveRuns.values())
-      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
-      .slice(0, n)
-      .map((item) => {
-        const heartbeatMs = Date.parse(item.heartbeatAt);
-        const silenceSec = Number.isFinite(heartbeatMs)
-          ? Math.max(0, Math.floor((now - heartbeatMs) / 1000))
-          : LIVE_HEARTBEAT_STALE_SEC + 1;
-        return {
-          ...item,
-          silenceSec,
-          heartbeatStale: silenceSec >= LIVE_HEARTBEAT_STALE_SEC,
-          events: item.events.slice(-40)
-        };
-      });
+    return this.liveRunState.list(limit);
   }
 
   listQueue(limit = 40): Array<{ taskId: string; taskName: string; trigger: "timer" | "manual"; enqueuedAt: string; waitMs: number }> {
@@ -717,7 +169,7 @@ export class LoopScheduler {
       prompt: normalized.prompt,
       workflow,
       workflowSteps,
-      workflowCarryContext: false,
+      workflowCarryContext: normalized.workflowCarryContext ?? false,
       workflowLoopFromStart: normalized.workflowLoopFromStart ?? false,
       workflowSharedSession: normalized.workflowSharedSession ?? true,
       workflowFullAccess: normalized.workflowFullAccess ?? false,
@@ -787,7 +239,7 @@ export class LoopScheduler {
       ...normalized,
       workflow,
       workflowSteps,
-      workflowCarryContext: false,
+      workflowCarryContext: normalized.workflowCarryContext ?? current.workflowCarryContext,
       workflowLoopFromStart,
       workflowSharedSession,
       workflowFullAccess,
@@ -882,7 +334,7 @@ export class LoopScheduler {
     return true;
   }
 
-  async runNow(taskId: string): Promise<LoopRun> {
+  async runNow(taskId: string, options?: { executionOverrides?: RuntimeAgentRuntimeExecutionOverrides }): Promise<LoopRun> {
     const task = this.tasks.get(taskId);
     if (!task) {
       throw new Error("task not found");
@@ -890,11 +342,16 @@ export class LoopScheduler {
     return this.runTask(task, "manual", {
       persistTaskState: true,
       recordRun: true,
-      restartIfRunning: true
+      restartIfRunning: true,
+      executionOverrides: options?.executionOverrides
     });
   }
 
-  async resumeNow(taskId: string, stepIndex?: number | null): Promise<LoopRun> {
+  async resumeNow(
+    taskId: string,
+    stepIndex?: number | null,
+    options?: { executionOverrides?: RuntimeAgentRuntimeExecutionOverrides }
+  ): Promise<LoopRun> {
     const task = this.tasks.get(taskId);
     if (!task) {
       throw new Error("task not found");
@@ -904,7 +361,8 @@ export class LoopScheduler {
       persistTaskState: true,
       recordRun: true,
       restartIfRunning: true,
-      resumeStepIndex: resolvedStepIndex
+      resumeStepIndex: resolvedStepIndex,
+      executionOverrides: options?.executionOverrides
     });
   }
 
@@ -926,7 +384,10 @@ export class LoopScheduler {
     return resolvedStepIndex;
   }
 
-  async testTask(raw: CreateLoopTaskInput): Promise<LoopRun> {
+  async testTask(
+    raw: CreateLoopTaskInput,
+    options?: { executionOverrides?: RuntimeAgentRuntimeExecutionOverrides }
+  ): Promise<LoopRun> {
     const normalized = normalizeTaskInput(raw);
     ensureValidNumericPatch(raw, normalized);
     if (!normalized.prompt) {
@@ -940,7 +401,10 @@ export class LoopScheduler {
     const now = nowIso();
     const workflow = ensureWorkflowList(normalized.workflow);
     const workflowSteps = ensureWorkflowSteps(normalized.workflowSteps, workflow);
-    ensureWorkflowHasEnabledSteps(workflowSteps);
+    const workflowDefinitionChanged = normalized.workflow !== undefined || normalized.workflowSteps !== undefined;
+    if (workflowDefinitionChanged) {
+      ensureWorkflowHasEnabledSteps(workflowSteps);
+    }
     await this.validateWorkflowStepPaths(workflowSteps, resolvedTaskCwd ? resolvedTaskCwd.runCwd : null);
     const previewTask: LoopTask = {
       id: randomUUID(),
@@ -949,7 +413,7 @@ export class LoopScheduler {
       prompt: normalized.prompt,
       workflow,
       workflowSteps,
-      workflowCarryContext: false,
+      workflowCarryContext: normalized.workflowCarryContext ?? false,
       workflowLoopFromStart: normalized.workflowLoopFromStart ?? false,
       workflowSharedSession: normalized.workflowSharedSession ?? true,
       workflowFullAccess: normalized.workflowFullAccess ?? false,
@@ -966,58 +430,19 @@ export class LoopScheduler {
       lastRunAt: null
     };
 
-    return this.runTask(previewTask, "manual", { persistTaskState: false, recordRun: false });
+    return this.runTask(previewTask, "manual", {
+      persistTaskState: false,
+      recordRun: false,
+      executionOverrides: options?.executionOverrides
+    });
   }
 
   async inspectPath(rawPath: string): Promise<{ path: string; kind: "directory" | "file"; runCwd: string; promptHint: string | null }> {
-    return this.inspectPathWithBase(rawPath, null);
-  }
-
-  private async inspectPathWithBase(
-    rawPath: string,
-    baseCwd: string | null
-  ): Promise<{ path: string; kind: "directory" | "file"; runCwd: string; promptHint: string | null }> {
-    const value = String(rawPath ?? "").trim();
-    if (!value) {
-      throw new Error("path is required");
-    }
-
-    const absolute = baseCwd && !isAbsolute(value) ? resolve(baseCwd, value) : resolve(value);
-    let details;
-    try {
-      details = await stat(absolute);
-    } catch {
-      throw new Error(`path not found: ${absolute}`);
-    }
-
-    if (details.isDirectory()) {
-      return { path: absolute, kind: "directory", runCwd: absolute, promptHint: null };
-    }
-    if (details.isFile()) {
-      return {
-        path: absolute,
-        kind: "file",
-        runCwd: dirname(absolute),
-        promptHint: `Focus file: ${absolute}`
-      };
-    }
-    throw new Error(`path must be a directory or file: ${absolute}`);
+    return this.agentRuntime.inspectPath(rawPath, null);
   }
 
   private async validateWorkflowStepPaths(workflowSteps: WorkflowStep[], taskRunCwd: string | null): Promise<void> {
-    for (const step of workflowSteps) {
-      const raw = step && step.cwd != null ? String(step.cwd).trim() : "";
-      if (!raw) {
-        continue;
-      }
-      try {
-        await this.inspectPathWithBase(raw, taskRunCwd);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const stepName = step.name ? String(step.name) : "(unnamed)";
-        throw new Error(`workflow step "${stepName}" cwd invalid: ${message}`);
-      }
-    }
+    await this.agentRuntime.validateWorkflowStepPaths(workflowSteps, taskRunCwd);
   }
 
   private async persistAndResync(): Promise<void> {
@@ -1045,23 +470,17 @@ export class LoopScheduler {
 
   private runTask(task: LoopTask, trigger: "timer" | "manual", options: RunTaskOptions): Promise<LoopRun> {
     return new Promise<LoopRun>((resolveRun) => {
-      const shouldSilentlySkipTimerConflict = trigger === "timer" && !options.restartIfRunning;
+      const skipOnTimerConflict = shouldSilentlySkipTimerConflict(trigger, options.restartIfRunning);
       if (hasNoEnabledWorkflowSteps(task)) {
-        const run: LoopRun = {
-          id: randomUUID(),
-          taskId: task.id,
-          taskName: task.name,
-          runner: task.runner,
+        const now = nowIso();
+        const run = createImmediateRun({
+          runId: randomUUID(),
+          now,
+          task,
           trigger,
-          startedAt: nowIso(),
-          endedAt: nowIso(),
-          durationMs: 0,
           status: "failed",
-          exitCode: null,
-          stdout: "",
-          stderr: "",
           error: "no enabled workflow steps"
-        };
+        });
         if (options.recordRun) {
           this.pushRun(run);
         }
@@ -1071,44 +490,32 @@ export class LoopScheduler {
       if (this.running.has(task.id)) {
         if (options.restartIfRunning) {
           this.cancelRunningTask(task.id, "task restarted manually");
-          const existingQueued = this.queue.find((item) => item.task.id === task.id);
+          const existingQueued = findQueuedRunByTaskId(this.queue, task.id);
           if (existingQueued) {
             existingQueued.resolveRuns.push(resolveRun);
             return;
           }
-        } else if (shouldSilentlySkipTimerConflict) {
-          resolveRun({
-            id: randomUUID(),
-            taskId: task.id,
-            taskName: task.name,
-            runner: task.runner,
+        } else if (skipOnTimerConflict) {
+          const now = nowIso();
+          resolveRun(createImmediateRun({
+            runId: randomUUID(),
+            now,
+            task,
             trigger,
-            startedAt: nowIso(),
-            endedAt: nowIso(),
-            durationMs: 0,
             status: "cancelled",
-            exitCode: null,
-            stdout: "",
-            stderr: "",
             error: "task already running (timer skipped)"
-          });
+          }));
           return;
         } else {
-          const run: LoopRun = {
-            id: randomUUID(),
-            taskId: task.id,
-            taskName: task.name,
-            runner: task.runner,
+          const now = nowIso();
+          const run = createImmediateRun({
+            runId: randomUUID(),
+            now,
+            task,
             trigger,
-            startedAt: nowIso(),
-            endedAt: nowIso(),
-            durationMs: 0,
             status: "failed",
-            exitCode: null,
-            stdout: "",
-            stderr: "",
             error: "task is already running"
-          };
+          });
           if (options.recordRun) {
             this.pushRun(run);
           }
@@ -1118,44 +525,32 @@ export class LoopScheduler {
       }
       if (this.queue.some((item) => item.task.id === task.id)) {
         if (options.restartIfRunning) {
-          const existingQueued = this.queue.find((item) => item.task.id === task.id);
+          const existingQueued = findQueuedRunByTaskId(this.queue, task.id);
           if (existingQueued) {
             existingQueued.resolveRuns.push(resolveRun);
             return;
           }
-        } else if (shouldSilentlySkipTimerConflict) {
-          resolveRun({
-            id: randomUUID(),
-            taskId: task.id,
-            taskName: task.name,
-            runner: task.runner,
+        } else if (skipOnTimerConflict) {
+          const now = nowIso();
+          resolveRun(createImmediateRun({
+            runId: randomUUID(),
+            now,
+            task,
             trigger,
-            startedAt: nowIso(),
-            endedAt: nowIso(),
-            durationMs: 0,
             status: "cancelled",
-            exitCode: null,
-            stdout: "",
-            stderr: "",
             error: "task already queued (timer skipped)"
-          });
+          }));
           return;
         } else {
-          const run: LoopRun = {
-            id: randomUUID(),
-            taskId: task.id,
-            taskName: task.name,
-            runner: task.runner,
+          const now = nowIso();
+          const run = createImmediateRun({
+            runId: randomUUID(),
+            now,
+            task,
             trigger,
-            startedAt: nowIso(),
-            endedAt: nowIso(),
-            durationMs: 0,
             status: "failed",
-            exitCode: null,
-            stdout: "",
-            stderr: "",
             error: "task is already queued"
-          };
+          });
           if (options.recordRun) {
             this.pushRun(run);
           }
@@ -1222,90 +617,6 @@ export class LoopScheduler {
     }
   }
 
-  private initLiveRun(runId: string, task: LoopTask, trigger: "timer" | "manual", startedAt: string): void {
-    this.liveRuns.set(runId, {
-      id: runId,
-      taskId: task.id,
-      taskName: task.name,
-      runner: task.runner,
-      trigger,
-      startedAt,
-      heartbeatAt: startedAt,
-      silenceSec: 0,
-      heartbeatStale: false,
-      phase: "preparing",
-      round: 1,
-      stepIndex: 0,
-      totalSteps: 0,
-      stepName: null,
-      events: [],
-      stdoutTail: "",
-      stderrTail: ""
-    });
-  }
-
-  private setLiveRunPhase(runId: string, phase: LoopRunLive["phase"]): void {
-    const current = this.liveRuns.get(runId);
-    if (!current) {
-      return;
-    }
-    current.phase = phase;
-    current.heartbeatAt = nowIso();
-  }
-
-  private setLiveRunStep(runId: string, round: number, stepIndex: number, totalSteps: number, stepName: string | null): void {
-    const current = this.liveRuns.get(runId);
-    if (!current) {
-      return;
-    }
-    current.round = round;
-    current.stepIndex = stepIndex;
-    current.totalSteps = totalSteps;
-    current.stepName = stepName;
-    current.heartbeatAt = nowIso();
-  }
-
-  private pushLiveEvent(runId: string, level: LoopRunLiveEvent["level"], message: string): void {
-    const current = this.liveRuns.get(runId);
-    if (!current) {
-      return;
-    }
-    current.events.push({
-      at: nowIso(),
-      level,
-      message
-    });
-    if (current.events.length > LIVE_EVENT_LIMIT) {
-      current.events.splice(0, current.events.length - LIVE_EVENT_LIMIT);
-    }
-    current.heartbeatAt = nowIso();
-  }
-
-  private appendLiveOutput(runId: string, stream: "stdout" | "stderr", chunk: string): void {
-    const current = this.liveRuns.get(runId);
-    if (!current || !chunk) {
-      return;
-    }
-    if (stream === "stdout") {
-      current.stdoutTail = `${current.stdoutTail}${chunk}`.slice(-LIVE_OUTPUT_TAIL_LIMIT);
-    } else {
-      current.stderrTail = `${current.stderrTail}${chunk}`.slice(-LIVE_OUTPUT_TAIL_LIMIT);
-    }
-    current.heartbeatAt = nowIso();
-  }
-
-  private touchLiveRunHeartbeat(runId: string): void {
-    const current = this.liveRuns.get(runId);
-    if (!current) {
-      return;
-    }
-    current.heartbeatAt = nowIso();
-  }
-
-  private clearLiveRun(runId: string): void {
-    this.liveRuns.delete(runId);
-  }
-
   private ensureUniqueTaskName(name: string, excludeTaskId?: string): void {
     const normalized = String(name || "").trim().toLowerCase();
     if (!normalized) {
@@ -1334,49 +645,14 @@ export class LoopScheduler {
     this.runningControls.set(task.id, control);
     const startedAt = nowIso();
     const started = Date.now();
-    this.initLiveRun(runId, task, trigger, startedAt);
-    this.pushLiveEvent(runId, "info", "task started");
+    this.liveRunState.init(runId, task, trigger, startedAt);
+    this.liveRunState.pushEvent(runId, "info", "task started");
     void (async () => {
-        let prepared;
-        try {
-          prepared = await resolveExecutionContext(task.cwd, task.prompt);
-          this.pushLiveEvent(runId, "info", `resolved execution cwd: ${prepared.cwd}`);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          this.pushLiveEvent(runId, "error", message);
-          const failed: LoopRun = {
-            id: runId,
-            taskId: task.id,
-            taskName: task.name,
-            runner: task.runner,
-            trigger,
-            startedAt,
-            endedAt: nowIso(),
-            durationMs: Date.now() - started,
-            status: "failed",
-            exitCode: null,
-            stdout: "",
-            stderr: "",
-            error: message
-          };
-          if (options.recordRun) {
-            this.pushRun(failed);
-          }
-          this.clearLiveRun(runId);
-          this.running.delete(task.id);
-          this.runningControls.delete(task.id);
-          this.pumpQueue();
-          for (const resolveRun of resolveRuns) {
-            resolveRun(failed);
-          }
-          return;
-        }
-
         const steps = task.workflowSteps && task.workflowSteps.length > 0
           ? task.workflowSteps.filter((item) => item.enabled !== false)
           : [{ name: "default", enabled: true }];
         if (steps.length === 0) {
-          this.pushLiveEvent(runId, "error", "no enabled workflow steps");
+          this.liveRunState.pushEvent(runId, "error", "no enabled workflow steps");
           const failed: LoopRun = {
             id: runId,
             taskId: task.id,
@@ -1395,7 +671,7 @@ export class LoopScheduler {
           if (options.recordRun) {
             this.pushRun(failed);
           }
-          this.clearLiveRun(runId);
+          this.liveRunState.clear(runId);
           this.running.delete(task.id);
           this.runningControls.delete(task.id);
           this.pumpQueue();
@@ -1422,11 +698,11 @@ export class LoopScheduler {
             stderr: "",
             error: `invalid resume step index: ${requestedResumeStep}; enabled step count=${steps.length}`
           };
-          this.pushLiveEvent(runId, "error", failed.error || "invalid resume step index");
+          this.liveRunState.pushEvent(runId, "error", failed.error || "invalid resume step index");
           if (options.recordRun) {
             this.pushRun(failed);
           }
-          this.clearLiveRun(runId);
+          this.liveRunState.clear(runId);
           this.running.delete(task.id);
           this.runningControls.delete(task.id);
           this.pumpQueue();
@@ -1435,282 +711,105 @@ export class LoopScheduler {
           }
           return;
         }
-        this.setLiveRunPhase(runId, "running");
-        this.setLiveRunStep(runId, 1, initialStepIdx, steps.length, null);
-        let mergedStdout = "";
-        let mergedStderr = "";
-        let finalStatus: "success" | "failed" | "timeout" | "cancelled" = "success";
-        let finalExitCode: number | null = 0;
-        let finalError: string | null = null;
-        let firstFailure: FirstFailureInfo | null = null;
-        let codexSharedSessionStarted = false;
-        const codexSessionHome = task.workflowSharedSession ? codexSessionHomeForTask(task.id) : null;
-        if (codexSessionHome) {
-          try {
-            await mkdir(codexSessionHome, { recursive: true });
-          } catch (error) {
-            finalStatus = "failed";
-            finalExitCode = null;
-            finalError = error instanceof Error ? `prepare codex session home failed: ${error.message}` : "prepare codex session home failed";
-            this.pushLiveEvent(runId, "error", finalError);
-            const failed: LoopRun = {
-              id: runId,
-              taskId: task.id,
-              taskName: task.name,
+        this.liveRunState.setPhase(runId, "running");
+        this.liveRunState.setStep(runId, 1, initialStepIdx + 1, steps.length, null);
+        let execution;
+        try {
+          execution = await this.agentRuntime.executeTask({
+            task: {
+              id: task.id,
               runner: task.runner,
-              trigger,
-              startedAt,
-              endedAt: nowIso(),
-              durationMs: Date.now() - started,
-              status: finalStatus,
-              exitCode: finalExitCode,
-              stdout: "",
-              stderr: "",
-              error: finalError
-            };
-            if (options.recordRun) {
-              this.pushRun(failed);
-            }
-            this.clearLiveRun(runId);
-            this.running.delete(task.id);
-            this.runningControls.delete(task.id);
-            this.pumpQueue();
-            for (const resolveRun of resolveRuns) {
-              resolveRun(failed);
-            }
-            return;
-          }
-        }
-
-        let round = 1;
-        let roundStartStepIdx = initialStepIdx;
-        let stopAll = false;
-        while (!stopAll) {
-          let roundHadFailure = false;
-          const currentControl = this.runningControls.get(task.id);
-          if (currentControl && currentControl.runId === runId && currentControl.cancelReason) {
-            finalStatus = "cancelled";
-            finalExitCode = null;
-            finalError = currentControl.cancelReason;
-            this.pushLiveEvent(runId, "error", finalError);
-            break;
-          }
-          const resumeHint = roundStartStepIdx > 0
-            ? ` (resume from step ${roundStartStepIdx + 1}/${steps.length})`
-            : "";
-          this.pushLiveEvent(runId, "info", `round ${round} started${resumeHint}`);
-          for (let i = roundStartStepIdx; i < steps.length; i += 1) {
-            const step = steps[i];
-            const currentControl = this.runningControls.get(task.id);
-            if (currentControl && currentControl.runId === runId && currentControl.cancelReason) {
-              finalStatus = "cancelled";
-              finalExitCode = null;
-              finalError = currentControl.cancelReason;
-              this.pushLiveEvent(runId, "error", finalError);
-              stopAll = true;
-              break;
-            }
-            this.setLiveRunStep(runId, round, i + 1, steps.length, step.name);
-            this.pushLiveEvent(runId, "info", `step ${i + 1}/${steps.length} started: ${step.name}`);
-            let stepContext = prepared;
-            if (step.cwd != null && String(step.cwd).trim()) {
-              try {
-                stepContext = await resolveExecutionContext(step.cwd, prepared.prompt, prepared.cwd);
-                this.pushLiveEvent(runId, "info", `step cwd resolved: ${stepContext.cwd}`);
-              } catch (error) {
-                finalStatus = "failed";
-                finalExitCode = null;
-                finalError = error instanceof Error ? error.message : String(error);
-                this.pushLiveEvent(runId, "error", finalError);
-                stopAll = true;
-                break;
-              }
-            }
-            const baseStepPrompt = step.name === "default"
-              ? stepContext.prompt
-              : buildTaskPrompt(stepContext.prompt, step.name, i, steps.length);
-            const withAppend = step.promptAppend
-              ? `${baseStepPrompt}\n\nStep instruction: ${step.promptAppend}`
-              : baseStepPrompt;
-            const stepPrompt = withAppend;
-            const effectiveRunner = step.runner ? normalizeRunner(step.runner) : task.runner;
-            const useManagedCodex = shouldUseManagedCodexSession(task, step, effectiveRunner);
-            const cmd = useManagedCodex
-              ? buildManagedCodexCommand(stepPrompt, codexSharedSessionStarted, task.workflowFullAccess)
-              : buildCommand(effectiveRunner, step.command ?? task.command, stepPrompt, task.workflowFullAccess);
-            if (!cmd) {
-              finalStatus = "failed";
-              finalExitCode = null;
-              finalError = "empty command; set command for task or step";
-              this.pushLiveEvent(runId, "error", finalError);
-              stopAll = true;
-              break;
-            }
-            const stepTimeout = 0;
-            this.pushLiveEvent(
-              runId,
-              "info",
-              `step ${i + 1}/${steps.length} executing (runner=${effectiveRunner}, timeout=disabled)`
-            );
-            const stepEnv = useManagedCodex && codexSessionHome
-              ? { CODEX_HOME: codexSessionHome }
-              : undefined;
-            const retryCount = normalizeStepRetryCount(step.retryCount);
-            const retryBackoffMs = normalizeStepRetryBackoffMs(step.retryBackoffMs);
-            let retryAttempt = 0;
-            let stepResult: CommandExecutionResult = {
-              status: "failed",
-              exitCode: null,
-              stdout: "",
-              stderr: "",
-              error: "step execution was not started"
-            };
-            let stepStdoutMerged = "";
-            let stepStderrMerged = "";
-            while (true) {
-              const currentAttempt = retryAttempt + 1;
-              if (currentAttempt > 1) {
-                this.pushLiveEvent(
-                  runId,
-                  "info",
-                  `step ${i + 1}/${steps.length} retry attempt ${currentAttempt}/${retryCount + 1} started`
-                );
-              }
-              const result = await this.executeCommand(
-                cmd,
-                stepContext.cwd,
-                stepTimeout,
-                stepEnv,
-                (child) => {
-                  const current = this.runningControls.get(task.id);
-                  if (current && current.runId === runId) {
-                    current.child = child;
-                    if (current.cancelReason) {
-                      try {
-                        child.kill("SIGTERM");
-                      } catch {}
-                    }
-                  }
-                },
-                () => {
-                  const current = this.runningControls.get(task.id);
-                  if (!current || current.runId !== runId) {
-                    return null;
-                  }
-                  return current.cancelReason;
-                },
-                (stream, chunk) => {
-                  this.appendLiveOutput(runId, stream, chunk);
-                },
-                () => {
-                  this.touchLiveRunHeartbeat(runId);
+              prompt: task.prompt,
+              command: task.command,
+              workflowSteps: steps,
+              workflowCarryContext: task.workflowCarryContext,
+              workflowLoopFromStart: task.workflowLoopFromStart,
+              workflowSharedSession: task.workflowSharedSession,
+              workflowFullAccess: task.workflowFullAccess
+            },
+            cwdInput: task.cwd,
+            initialStepIndex: initialStepIdx,
+            runCommand: options.executionOverrides?.runCommand,
+            runModel: options.executionOverrides?.runModel,
+            runTool: options.executionOverrides?.runTool,
+            resolveStepContext: options.executionOverrides?.resolveStepContext,
+            onCommandSpawn: (child) => {
+              const current = this.runningControls.get(task.id);
+              if (current && current.runId === runId) {
+                current.child = child;
+                if (current.cancelReason) {
+                  try {
+                    child.kill("SIGTERM");
+                  } catch {}
                 }
-              );
-              stepStdoutMerged += `[attempt ${currentAttempt}/${retryCount + 1}]\n${result.stdout}\n`;
-              stepStderrMerged += `[attempt ${currentAttempt}/${retryCount + 1}]\n${result.stderr}\n`;
-              const shouldRetry = retryAttempt < retryCount && isRetryableUpstreamFailure(result);
-              if (!shouldRetry) {
-                stepResult = result;
-                break;
               }
-              const waitMs = computeStepRetryDelayMs(retryBackoffMs, currentAttempt);
-              this.pushLiveEvent(
-                runId,
-                "info",
-                `step ${i + 1}/${steps.length} hit retryable upstream/network failure, retry in ${waitMs}ms`
-              );
-              const continueRetry = await this.waitForRetryDelay(task.id, runId, waitMs);
-              if (!continueRetry) {
+            },
+            callbacks: {
+              onEvent: (level, message) => this.liveRunState.pushEvent(runId, level, message),
+              onStepChange: (round, stepIndex, totalSteps, stepName) => {
+                this.liveRunState.setStep(runId, round, stepIndex, totalSteps, stepName);
+              },
+              onOutput: (stream, chunk) => {
+                this.liveRunState.appendOutput(runId, stream, chunk);
+              },
+              onHeartbeat: () => {
+                this.liveRunState.touch(runId);
+              },
+              isCancelled: () => {
                 const current = this.runningControls.get(task.id);
-                const cancelReason = current && current.runId === runId ? current.cancelReason : null;
-                stepResult = {
-                  status: "cancelled",
-                  exitCode: null,
-                  stdout: result.stdout,
-                  stderr: result.stderr,
-                  error: cancelReason || "retry wait cancelled"
-                };
-                break;
+                if (!current || current.runId !== runId) {
+                  return null;
+                }
+                return current.cancelReason;
+              },
+              stopAfterRoundReason: () => {
+                const current = this.runningControls.get(task.id);
+                if (!current || current.runId !== runId) {
+                  return null;
+                }
+                return current.stopAfterRoundReason;
               }
-              retryAttempt += 1;
             }
-            if (useManagedCodex) {
-              codexSharedSessionStarted = true;
-            }
-            mergedStdout += `[round ${round}] [step ${i + 1}/${steps.length}] ${step.name} (runner=${effectiveRunner}, timeout=disabled)\n${stepStdoutMerged}\n`;
-            mergedStderr += `[round ${round}] [step ${i + 1}/${steps.length}] ${step.name} (runner=${effectiveRunner}, timeout=disabled)\n${stepStderrMerged}\n`;
-            if (stepResult.status !== "success") {
-              roundHadFailure = true;
-              this.pushLiveEvent(
-                runId,
-                "error",
-                `step ${i + 1}/${steps.length} ended with ${stepResult.status} (exit=${stepResult.exitCode == null ? "-" : stepResult.exitCode})`
-              );
-              if (!firstFailure) {
-                firstFailure = {
-                  result: stepResult,
-                  round,
-                  stepIndex: i + 1,
-                  stepCount: steps.length,
-                  stepName: step.name
-                };
-              }
-              if (step.continueOnError) {
-                this.pushLiveEvent(runId, "info", `step ${i + 1}/${steps.length} continueOnError=true, move on`);
-                mergedStderr += `[round ${round}] [step ${i + 1}/${steps.length}] continue on error enabled, moving to next step\n`;
-                continue;
-              }
-              finalStatus = stepResult.status;
-              finalExitCode = stepResult.exitCode;
-              finalError = stepResult.error;
-              stopAll = true;
-              break;
-            }
-            this.pushLiveEvent(runId, "info", `step ${i + 1}/${steps.length} completed successfully`);
-            finalExitCode = stepResult.exitCode;
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isPathContextError = /^path (is required|not found:|must be a directory or file:)/.test(message);
+          const failed: LoopRun = {
+            id: runId,
+            taskId: task.id,
+            taskName: task.name,
+            runner: task.runner,
+            trigger,
+            startedAt,
+            endedAt: nowIso(),
+            durationMs: Date.now() - started,
+            status: "failed",
+            exitCode: null,
+            stdout: "",
+            stderr: "",
+            error: isPathContextError ? message : `unexpected scheduler error: ${message}`
+          };
+          this.liveRunState.pushEvent(runId, "error", message);
+          if (options.recordRun) {
+            this.pushRun(failed);
           }
-          if (roundHadFailure) {
-            this.pushLiveEvent(runId, "info", `round ${round} completed with failure(s), stopping loop`);
-            break;
+          this.liveRunState.clear(runId);
+          this.running.delete(task.id);
+          this.runningControls.delete(task.id);
+          this.pumpQueue();
+          for (const resolveRun of resolveRuns) {
+            resolveRun(failed);
           }
-          if (!task.workflowLoopFromStart || stopAll) {
-            break;
-          }
-          const controlAfterRound = this.runningControls.get(task.id);
-          if (controlAfterRound && controlAfterRound.runId === runId && controlAfterRound.stopAfterRoundReason) {
-            finalStatus = "cancelled";
-            finalExitCode = 0;
-            finalError = controlAfterRound.stopAfterRoundReason;
-            this.pushLiveEvent(runId, "info", `round ${round} completed, stop requested after current round`);
-            break;
-          }
-          this.pushLiveEvent(runId, "info", `round ${round} completed, loop from start enabled`);
-          roundStartStepIdx = 0;
-          round += 1;
+          return;
         }
-
-        if (!finalError && firstFailure) {
-          const first = firstFailure.result;
-          finalStatus = first.status;
-          finalExitCode = first.exitCode;
-          const explicit = first.error
-            ? String(first.error).trim()
-            : "";
-          const stderrTail = String(first.stderr || "").trim().slice(-240);
-          const location = `first failure at round ${firstFailure.round}, step ${firstFailure.stepIndex}/${firstFailure.stepCount} (${firstFailure.stepName})`;
-          const statusLine = `status=${first.status}, exit=${first.exitCode == null ? "-" : first.exitCode}`;
-          if (explicit) {
-            finalError = `${location}: ${statusLine}; error=${explicit}`;
-          } else if (stderrTail) {
-            finalError = `${location}: ${statusLine}; stderr=${stderrTail}`;
-          } else {
-            finalError = `${location}: ${statusLine}; one or more steps failed but execution continued`;
-          }
-        }
+        const finalStatus = execution.status;
+        const finalExitCode = execution.exitCode;
+        const finalError = execution.error;
+        const firstFailure = execution.firstFailure;
 
         const endedAt = nowIso();
-        this.setLiveRunPhase(runId, "finishing");
-        this.pushLiveEvent(runId, finalStatus === "success" ? "info" : "error", `task finished with ${finalStatus}`);
+        this.liveRunState.setPhase(runId, "finishing");
+        this.liveRunState.pushEvent(runId, finalStatus === "success" ? "info" : "error", `task finished with ${finalStatus}`);
         const run: LoopRun = {
           id: runId,
           taskId: task.id,
@@ -1722,8 +821,8 @@ export class LoopScheduler {
           durationMs: Date.now() - started,
           status: finalStatus,
           exitCode: finalExitCode,
-          stdout: mergedStdout.slice(0, 20000),
-          stderr: mergedStderr.slice(0, 20000),
+          stdout: execution.stdout,
+          stderr: execution.stderr,
           error: finalError
         };
 
@@ -1757,7 +856,7 @@ export class LoopScheduler {
           }
         }
 
-        this.clearLiveRun(runId);
+        this.liveRunState.clear(runId);
         this.running.delete(task.id);
         this.runningControls.delete(task.id);
         this.pumpQueue();
@@ -1784,7 +883,7 @@ export class LoopScheduler {
         if (options.recordRun) {
           this.pushRun(failed);
         }
-        this.clearLiveRun(runId);
+        this.liveRunState.clear(runId);
         this.running.delete(task.id);
         this.runningControls.delete(task.id);
         this.pumpQueue();
@@ -1792,111 +891,6 @@ export class LoopScheduler {
           resolveRun(failed);
         }
       });
-  }
-
-  private executeCommand(
-    command: string,
-    cwd: string,
-    _timeoutSec: number,
-    envPatch?: Record<string, string>,
-    onSpawn?: (child: ChildProcessWithoutNullStreams) => void,
-    cancellationReason?: () => string | null,
-    onChunk?: StreamChunkListener,
-    onHeartbeat?: HeartbeatListener
-  ): Promise<CommandExecutionResult> {
-    return new Promise<CommandExecutionResult>((resolveResult) => {
-      let stdout = "";
-      let stderr = "";
-      let settled = false;
-      const child = spawn("/bin/zsh", ["-lc", command], {
-        cwd,
-        env: {
-          ...process.env,
-          ...(envPatch ?? {})
-        }
-      });
-      if (onSpawn) {
-        onSpawn(child);
-      }
-
-      const heartbeatTimer = setInterval(() => {
-        if (onHeartbeat) {
-          onHeartbeat();
-        }
-      }, 5000);
-
-      const finalize = (result: CommandExecutionResult): void => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearInterval(heartbeatTimer);
-        resolveResult(result);
-      };
-
-      child.stdout.on("data", (chunk: Buffer | string) => {
-        const text = Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
-        stdout += text;
-        if (onChunk) {
-          onChunk("stdout", text);
-        }
-      });
-      child.stderr.on("data", (chunk: Buffer | string) => {
-        const text = Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
-        stderr += text;
-        if (onChunk) {
-          onChunk("stderr", text);
-        }
-      });
-
-      const finalizeWithCode = (code: number | null): void => {
-        const cancelledReason = cancellationReason ? cancellationReason() : null;
-        finalize({
-          status: cancelledReason
-            ? "cancelled"
-            : (code === 0 ? "success" : "failed"),
-          exitCode: code,
-          stdout,
-          stderr,
-          error: cancelledReason || null
-        });
-      };
-
-      child.on("exit", (code) => {
-        finalizeWithCode(code);
-      });
-
-      child.on("close", (code) => {
-        finalizeWithCode(code);
-      });
-
-      child.on("error", (error) => {
-        finalize({
-          status: "failed",
-          exitCode: null,
-          stdout,
-          stderr,
-          error: error.message
-        });
-      });
-    });
-  }
-
-  private async waitForRetryDelay(taskId: string, runId: string, waitMs: number): Promise<boolean> {
-    if (waitMs <= 0) {
-      return true;
-    }
-    const end = Date.now() + waitMs;
-    while (Date.now() < end) {
-      const control = this.runningControls.get(taskId);
-      if (control && control.runId === runId && control.cancelReason) {
-        return false;
-      }
-      const remain = end - Date.now();
-      const chunk = Math.max(1, Math.min(remain, 250));
-      await new Promise((resolve) => setTimeout(resolve, chunk));
-    }
-    return true;
   }
 
   private pushRun(run: LoopRun): void {
