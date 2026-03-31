@@ -483,6 +483,8 @@ export function renderLoopHtml(): string {
         cwd: "",
         command: "",
         promptAppend: "根据需求改动代码，优先保证可运行性和最小变更面。",
+        retryCount: 1,
+        retryBackoffMs: 1200,
         continueOnError: false,
         enabled: true
       },
@@ -492,6 +494,8 @@ export function renderLoopHtml(): string {
         cwd: "",
         command: "",
         promptAppend: "重点检查正确性、边界条件、回归风险和缺失测试。",
+        retryCount: 1,
+        retryBackoffMs: 1200,
         continueOnError: false,
         enabled: true
       },
@@ -501,6 +505,8 @@ export function renderLoopHtml(): string {
         cwd: "",
         command: "review-cli \\\\\\\"{prompt}\\\\\\\"",
         promptAppend: "输出问题清单和修复建议。",
+        retryCount: 1,
+        retryBackoffMs: 1200,
         continueOnError: false,
         enabled: true
       },
@@ -510,6 +516,8 @@ export function renderLoopHtml(): string {
         cwd: "",
         command: "",
         promptAppend: "总结改动内容、影响范围和验证建议。",
+        retryCount: 1,
+        retryBackoffMs: 1200,
         continueOnError: true,
         enabled: true
       },
@@ -519,6 +527,8 @@ export function renderLoopHtml(): string {
         cwd: "",
         command: "",
         promptAppend: "执行并整理相关测试结果，指出失败原因。",
+        retryCount: 1,
+        retryBackoffMs: 1200,
         continueOnError: false,
         enabled: true
       }
@@ -721,6 +731,8 @@ export function renderLoopHtml(): string {
           cwd: "",
           command: "",
           promptAppend: "",
+          retryCount: 0,
+          retryBackoffMs: 1200,
           continueOnError: false,
           enabled: true
         });
@@ -785,6 +797,12 @@ export function renderLoopHtml(): string {
         if (target instanceof HTMLInputElement) {
           if (key === "enabled") {
             row.enabled = target.checked;
+          } else if (key === "retryCount") {
+            const n = Number(target.value);
+            row.retryCount = Number.isFinite(n) ? Math.max(0, Math.min(8, Math.floor(n))) : 0;
+          } else if (key === "retryBackoffMs") {
+            const n = Number(target.value);
+            row.retryBackoffMs = Number.isFinite(n) ? Math.max(200, Math.min(30000, Math.floor(n))) : 1200;
           } else {
             row[key] = target.value;
           }
@@ -1076,12 +1094,16 @@ export function renderLoopHtml(): string {
     }
 
     function normalizeStep(step) {
+      const retryCountRaw = Number(step && step.retryCount);
+      const retryBackoffRaw = Number(step && step.retryBackoffMs);
       return {
         name: String(step && step.name ? step.name : "").trim(),
         runner: step && step.runner ? String(step.runner).trim() : "",
         cwd: step && step.cwd ? String(step.cwd).trim() : "",
         command: step && step.command ? String(step.command).trim() : "",
         promptAppend: step && step.promptAppend ? String(step.promptAppend).trim() : "",
+        retryCount: Number.isFinite(retryCountRaw) ? Math.max(0, Math.min(8, Math.floor(retryCountRaw))) : 0,
+        retryBackoffMs: Number.isFinite(retryBackoffRaw) ? Math.max(200, Math.min(30000, Math.floor(retryBackoffRaw))) : 1200,
         continueOnError: parseUiBoolean(step && step.continueOnError, false),
         enabled: parseUiBoolean(step && step.enabled, true)
       };
@@ -1096,6 +1118,8 @@ export function renderLoopHtml(): string {
         cwd: tpl.cwd,
         command: tpl.command,
         promptAppend: tpl.promptAppend,
+        retryCount: tpl.retryCount,
+        retryBackoffMs: tpl.retryBackoffMs,
         continueOnError: tpl.continueOnError,
         enabled: tpl.enabled
       };
@@ -1120,6 +1144,8 @@ export function renderLoopHtml(): string {
           + '<input class="wf-adv" data-k="cwd" value="' + esc(r.cwd || "") + '" placeholder="可选：步骤路径(目录/文件)" />'
           + '<input class="wf-adv" data-k="command" value="' + esc(r.command) + '" placeholder="可选：覆盖命令" />'
           + '<input class="wf-adv" data-k="promptAppend" value="' + esc(r.promptAppend || "") + '" placeholder="可选：附加提示" />'
+          + '<input class="wf-adv" data-k="retryCount" type="number" min="0" max="8" value="' + esc(r.retryCount) + '" placeholder="重试次数(0-8)" />'
+          + '<input class="wf-adv" data-k="retryBackoffMs" type="number" min="200" max="30000" step="100" value="' + esc(r.retryBackoffMs) + '" placeholder="退避基数ms(200-30000)" />'
           + '<select class="wf-adv" data-k="continueOnError">'
           + '<option value="false"' + (r.continueOnError ? "" : " selected") + '>stop</option>'
           + '<option value="true"' + (r.continueOnError ? " selected" : "") + '>continue</option>'
@@ -1151,6 +1177,8 @@ export function renderLoopHtml(): string {
             cwd: row.cwd || undefined,
             command: row.command || undefined,
             promptAppend: row.promptAppend || undefined,
+            retryCount: row.retryCount,
+            retryBackoffMs: row.retryBackoffMs,
             continueOnError: row.continueOnError,
             enabled: row.enabled
           };
@@ -1179,6 +1207,62 @@ export function renderLoopHtml(): string {
       return "idle";
     }
 
+    function taskRuntimeUi(item, runtimeState) {
+      const isRunning = runtimeState === "running";
+      const isQueued = runtimeState === "queued";
+      const isActive = isRunning || isQueued;
+      const runtimeTag = isRunning
+        ? '<span class="tag running">运行中</span>'
+        : (isQueued ? '<span class="tag queued">排队中</span>' : '<span class="tag">空闲</span>');
+      const runLabel = isRunning
+        ? "重启执行"
+        : (isQueued ? "重新触发" : (item.enabled ? "立即执行" : "手动执行"));
+      const runClass = isActive ? "warn" : "";
+      const stopLabel = isRunning ? "停止本轮" : "取消排队";
+      const showStopButton = isActive;
+      const showGracefulStopButton = isRunning && item.workflowLoopFromStart;
+      const toggleLabel = item.enabled
+        ? (isActive ? "停用(并停止)" : "停用")
+        : (isActive ? "重新启用调度" : "启用");
+      const runtimeHint = isRunning
+        ? (item.enabled
+          ? "正在运行：可重启本轮、停止本轮，编辑暂不可用。"
+          : "正在运行（已停用）：当前轮次会继续，后续自动调度已关闭；可随时重新启用。")
+        : (isQueued
+          ? (item.enabled
+            ? "正在排队：可重新触发（合并请求）或取消排队。"
+            : "正在排队（已停用）：本次请求仍在队列，后续自动调度已关闭；可取消排队或重新启用调度。")
+          : (item.enabled ? "空闲且已启用：可立即执行或编辑。" : "空闲且已停用：可手动执行，或先启用定时任务。"));
+      return {
+        isRunning,
+        isQueued,
+        isActive,
+        runtimeTag,
+        runLabel,
+        runClass,
+        stopLabel,
+        showStopButton,
+        showGracefulStopButton,
+        toggleLabel,
+        runtimeHint
+      };
+    }
+
+    function toggleResultMessage(taskEnabledBefore, runtimeState) {
+      if (taskEnabledBefore) {
+        return runtimeState === "running" || runtimeState === "queued"
+          ? "任务已停止并停用"
+          : "任务已停用";
+      }
+      if (runtimeState === "running") {
+        return "任务已重新启用：当前轮次继续，后续将恢复自动调度";
+      }
+      if (runtimeState === "queued") {
+        return "任务已重新启用：当前请求仍在队列，后续将恢复自动调度";
+      }
+      return "任务已启用";
+    }
+
     function taskRow(item) {
       const enabledTag = item.enabled
         ? '<span class="tag ok">启用</span>'
@@ -1194,28 +1278,22 @@ export function renderLoopHtml(): string {
           const stepRunner = step.runner ? String(step.runner) : item.runner;
           const stepCwd = step.cwd ? ",cwd=" + String(step.cwd) : "";
           const stepAppend = step.promptAppend ? ",append" : "";
+          const stepRetry = Number(step.retryCount) > 0
+            ? ",retry=" + String(step.retryCount) + "@" + String(step.retryBackoffMs || 1200) + "ms"
+            : "";
           const stepErr = step.continueOnError ? ",onError=continue" : "";
-          return stepName + "(" + stepRunner + stepCwd + stepAppend + stepErr + ")";
+          return stepName + "(" + stepRunner + stepCwd + stepAppend + stepRetry + stepErr + ")";
         }).join(" -> ")
         : workflowText;
       const loopText = item.workflowLoopFromStart ? "从头循环" : "单轮";
       const sessionText = item.workflowSharedSession === false ? "每步新会话" : "共享会话";
       const accessText = item.workflowFullAccess ? "Full Access" : "标准";
       const runtimeState = taskRuntimeState(item.id);
-      const isRunning = runtimeState === "running";
-      const isQueued = runtimeState === "queued";
-      const isActive = isRunning || isQueued;
-      const runtimeTag = runtimeState === "running"
-        ? '<span class="tag running">运行中</span>'
-        : (runtimeState === "queued" ? '<span class="tag queued">排队中</span>' : '<span class="tag">空闲</span>');
-      const runLabel = isRunning
-        ? "重启执行"
-        : (isQueued ? "重新触发" : (item.enabled ? "立即执行" : "手动执行"));
-      const runClass = isRunning || isQueued ? "warn" : "";
-      const stopButton = isRunning || isQueued
-        ? ('<button class="warn" data-act="stop" data-id="' + esc(item.id) + '">' + (isRunning ? "停止本轮" : "取消排队") + '</button>')
+      const runtimeUiItem = taskRuntimeUi(item, runtimeState);
+      const stopButton = runtimeUiItem.showStopButton
+        ? ('<button class="warn" data-act="stop" data-id="' + esc(item.id) + '">' + runtimeUiItem.stopLabel + '</button>')
         : "";
-      const gracefulStopButton = isRunning && item.workflowLoopFromStart
+      const gracefulStopButton = runtimeUiItem.showGracefulStopButton
         ? ('<button class="ghost" data-act="stopAfterRound" data-id="' + esc(item.id) + '">本轮完成后停止</button>')
         : "";
       const checkpointStepIndex = Number(item.workflowResumeStepIndex);
@@ -1223,24 +1301,16 @@ export function renderLoopHtml(): string {
       const checkpointText = hasCheckpoint
         ? ("断点: 第 " + checkpointStepIndex + " 步 | 更新时间: " + formatTime(item.workflowResumeUpdatedAt) + (item.workflowResumeReason ? (" | 原因: " + item.workflowResumeReason) : ""))
         : "断点: 无";
-      const resumeButton = (!isActive && hasCheckpoint)
+      const resumeButton = (!runtimeUiItem.isActive && hasCheckpoint)
         ? ('<button class="ghost" data-act="resume" data-id="' + esc(item.id) + '">断点恢复</button>')
         : "";
-      const toggleLabel = item.enabled
-        ? ((isRunning || isQueued) ? "停用(并停止)" : "停用")
-        : "启用";
-      const runtimeHint = isRunning
-        ? "正在运行：可重启本轮、停止本轮，编辑暂不可用。"
-        : (isQueued
-          ? "正在排队：可重新触发（合并请求）或取消排队。"
-          : (item.enabled ? "空闲且已启用：可立即执行或编辑。" : "空闲且已停用：可手动执行，或先启用定时任务。"));
-      const editDisabled = isActive ? ' disabled title="任务运行/排队中，先停止后再编辑"' : "";
-      const deleteLabel = isActive ? "删除(并终止)" : "删除";
-      const deleteClass = isActive ? "warn" : "danger";
+      const editDisabled = runtimeUiItem.isActive ? ' disabled title="任务运行/排队中，先停止后再编辑"' : "";
+      const deleteLabel = runtimeUiItem.isActive ? "删除(并终止)" : "删除";
+      const deleteClass = runtimeUiItem.isActive ? "warn" : "danger";
       return '<div class="task-item">'
         + '<div class="row"><div class="row" style="gap:8px;"><strong>' + esc(item.name) + '</strong></div><div class="row" style="gap:6px;">'
         + enabledTag
-        + runtimeTag
+        + runtimeUiItem.runtimeTag
         + '<span class="tag">' + esc(item.runner) + '</span>'
         + '<span class="tag">' + esc(item.intervalSec) + 's</span>'
         + '<span class="tag">' + esc(sessionText) + '</span>'
@@ -1249,16 +1319,16 @@ export function renderLoopHtml(): string {
         + '<div class="muted" style="margin-top:6px;">path: ' + esc(item.cwd || "(默认)")
         + ' | 执行方式: ' + esc(loopText) + ' | 会话: ' + esc(sessionText) + ' | 权限: ' + esc(accessText) + ' | 最近执行: ' + esc(formatTime(item.lastRunAt)) + '</div>'
         + '<div class="muted" style="margin-top:4px;">' + esc(checkpointText) + '</div>'
-        + '<div class="muted" style="margin-top:4px;">状态提示: ' + esc(runtimeHint) + '</div>'
+        + '<div class="muted" style="margin-top:4px;">状态提示: ' + esc(runtimeUiItem.runtimeHint) + '</div>'
         + '<pre style="margin-top:8px;">workflow: ' + esc(stepDetail) + '\\nprompt: ' + esc(item.prompt) + '\\ncommand: ' + esc(cmd) + '</pre>'
         + '<div class="actions">'
-        + '<button class="' + runClass + '" data-act="run" data-id="' + esc(item.id) + '">' + runLabel + '</button>'
+        + '<button class="' + runtimeUiItem.runClass + '" data-act="run" data-id="' + esc(item.id) + '">' + runtimeUiItem.runLabel + '</button>'
         + resumeButton
         + stopButton
         + gracefulStopButton
         + '<button class="ghost" data-act="edit" data-id="' + esc(item.id) + '"' + editDisabled + '>' + editLabel + '</button>'
         + '<button class="warn" data-act="clone" data-id="' + esc(item.id) + '">复制到表单</button>'
-        + '<button class="ghost" data-act="toggle" data-id="' + esc(item.id) + '">' + toggleLabel + '</button>'
+        + '<button class="ghost" data-act="toggle" data-id="' + esc(item.id) + '">' + runtimeUiItem.toggleLabel + '</button>'
         + '<button class="' + deleteClass + '" data-act="delete" data-id="' + esc(item.id) + '">' + deleteLabel + '</button>'
         + '</div></div>';
     }
@@ -1495,6 +1565,8 @@ export function renderLoopHtml(): string {
               cwd: row.cwd || undefined,
               command: row.command || undefined,
               promptAppend: row.promptAppend || undefined,
+              retryCount: row.retryCount,
+              retryBackoffMs: row.retryBackoffMs,
               continueOnError: row.continueOnError,
               enabled: row.enabled
             };
@@ -1737,21 +1809,13 @@ export function renderLoopHtml(): string {
                 msg("任务不存在或已刷新", true);
                 return;
               }
-              if (!taskItem.enabled && runtimeState === "running") {
-                msg("任务正在运行，请先停止后再启用/停用。", true);
-                return;
-              }
               if (taskItem.enabled && (runtimeState === "running" || runtimeState === "queued")) {
                 const ok = window.confirm("停用任务将先停止当前运行/排队，确认继续吗？");
                 if (!ok) return;
                 await api("/__loop/api/tasks/" + id + "/stop", { method: "POST" });
               }
               await api("/__loop/api/tasks/" + id + "/toggle", { method: "POST" });
-              if (taskItem.enabled) {
-                msg(runtimeState === "running" || runtimeState === "queued" ? "任务已停止并停用" : "任务已停用", false);
-              } else {
-                msg("任务已启用", false);
-              }
+              msg(toggleResultMessage(taskItem.enabled, runtimeState), false);
             } else if (act === "stop") {
               const data = await api("/__loop/api/tasks/" + id + "/stop", { method: "POST" });
               const item = data && data.item ? data.item : null;

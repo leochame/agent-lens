@@ -358,6 +358,100 @@ test("custom command template shell-quotes prompt safely", async () => {
   }
 });
 
+test("custom codex command injects full-auto when full-access is disabled", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-custom-codex-full-auto-"));
+  const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
+  await scheduler.init();
+  try {
+    const calls: string[] = [];
+    (scheduler as unknown as {
+      executeCommand: (
+        command: string,
+        cwd: string,
+        timeoutSec: number,
+        envPatch?: Record<string, string>
+      ) => Promise<{ status: "success"; exitCode: number; stdout: string; stderr: string; error: null }>;
+    }).executeCommand = async (command) => {
+      calls.push(command);
+      return {
+        status: "success",
+        exitCode: 0,
+        stdout: "ok",
+        stderr: "",
+        error: null
+      };
+    };
+
+    const task = await scheduler.createTask({
+      name: "custom-codex-full-auto",
+      runner: "custom",
+      prompt: "line1\nO'Hara $(echo pwn)",
+      command: 'codex exec "{prompt}"',
+      workflowSharedSession: false,
+      workflowFullAccess: false,
+      intervalSec: 300,
+      timeoutSec: 30
+    });
+
+    const run = await scheduler.runNow(task.id);
+    assert.equal(run.status, "success");
+    assert.equal(calls.length, 1);
+    assert.match(calls[0], /^codex exec --full-auto '/);
+    assert.ok(calls[0].includes("'\"'\"'"));
+    assert.ok(calls[0].includes("$(echo pwn)"));
+  } finally {
+    scheduler.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("custom codex command injects danger flag when full-access is enabled", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-custom-codex-danger-"));
+  const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
+  await scheduler.init();
+  try {
+    const calls: string[] = [];
+    (scheduler as unknown as {
+      executeCommand: (
+        command: string,
+        cwd: string,
+        timeoutSec: number,
+        envPatch?: Record<string, string>
+      ) => Promise<{ status: "success"; exitCode: number; stdout: string; stderr: string; error: null }>;
+    }).executeCommand = async (command) => {
+      calls.push(command);
+      return {
+        status: "success",
+        exitCode: 0,
+        stdout: "ok",
+        stderr: "",
+        error: null
+      };
+    };
+
+    const task = await scheduler.createTask({
+      name: "custom-codex-danger",
+      runner: "custom",
+      prompt: "line1\nO'Hara $(echo pwn)",
+      command: 'codex exec "{prompt}"',
+      workflowSharedSession: false,
+      workflowFullAccess: true,
+      intervalSec: 300,
+      timeoutSec: 30
+    });
+
+    const run = await scheduler.runNow(task.id);
+    assert.equal(run.status, "success");
+    assert.equal(calls.length, 1);
+    assert.match(calls[0], /^codex exec --dangerously-bypass-approvals-and-sandbox '/);
+    assert.ok(calls[0].includes("'\"'\"'"));
+    assert.ok(calls[0].includes("$(echo pwn)"));
+  } finally {
+    scheduler.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("workflow shared session defaults to enabled and full-access defaults to disabled", async () => {
   const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-default-flags-"));
   const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
@@ -429,6 +523,149 @@ test("continueOnError failure reports explicit first-failure location", async ()
     assert.match(run.error || "", /first failure at round 1, step 1\/2 \(step-1\)/);
     assert.match(run.error || "", /status=failed, exit=2/);
     assert.match(run.error || "", /stderr=sed: src\/main\/resources\/application\.yml: No such file or directory/);
+  } finally {
+    scheduler.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("workflow step retries on retryable upstream/network failure and succeeds", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-step-retry-ok-"));
+  const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
+  await scheduler.init();
+  try {
+    let callCount = 0;
+    (scheduler as unknown as {
+      executeCommand: (
+        command: string,
+        cwd: string,
+        timeoutSec: number,
+        envPatch?: Record<string, string>
+      ) => Promise<{ status: "success" | "failed"; exitCode: number | null; stdout: string; stderr: string; error: string | null }>;
+    }).executeCommand = async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        return {
+          status: "failed",
+          exitCode: 1,
+          stdout: "",
+          stderr: "HTTP 502 Bad Gateway, cf-ray: test",
+          error: "upstream bad gateway"
+        };
+      }
+      return {
+        status: "success",
+        exitCode: 0,
+        stdout: "ok",
+        stderr: "",
+        error: null
+      };
+    };
+
+    const task = await scheduler.createTask({
+      name: "retry-upstream-once",
+      runner: "custom",
+      prompt: "retry upstream",
+      command: 'echo "{prompt}"',
+      workflowSteps: [
+        { name: "step-1", enabled: true, retryCount: 1, retryBackoffMs: 200 }
+      ],
+      intervalSec: 300
+    });
+
+    const run = await scheduler.runNow(task.id);
+    assert.equal(run.status, "success");
+    assert.equal(callCount, 2);
+    assert.match(run.stderr, /\[attempt 1\/2\]/);
+    assert.match(run.stderr, /\[attempt 2\/2\]/);
+  } finally {
+    scheduler.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("workflow step does not retry non-network command failures", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-step-retry-no-"));
+  const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
+  await scheduler.init();
+  try {
+    let callCount = 0;
+    (scheduler as unknown as {
+      executeCommand: (
+        command: string,
+        cwd: string,
+        timeoutSec: number,
+        envPatch?: Record<string, string>
+      ) => Promise<{ status: "success" | "failed"; exitCode: number | null; stdout: string; stderr: string; error: string | null }>;
+    }).executeCommand = async () => {
+      callCount += 1;
+      return {
+        status: "failed",
+        exitCode: 2,
+        stdout: "",
+        stderr: "sed: src/main/resources/application.yml: No such file or directory",
+        error: null
+      };
+    };
+
+    const task = await scheduler.createTask({
+      name: "retry-non-network-none",
+      runner: "custom",
+      prompt: "retry non network",
+      command: 'echo "{prompt}"',
+      workflowSteps: [
+        { name: "step-1", enabled: true, retryCount: 3, retryBackoffMs: 200 }
+      ],
+      intervalSec: 300
+    });
+
+    const run = await scheduler.runNow(task.id);
+    assert.equal(run.status, "failed");
+    assert.equal(callCount, 1);
+  } finally {
+    scheduler.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("workflow step does not retry generic timeout without network context", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-step-retry-timeout-"));
+  const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
+  await scheduler.init();
+  try {
+    let callCount = 0;
+    (scheduler as unknown as {
+      executeCommand: (
+        command: string,
+        cwd: string,
+        timeoutSec: number,
+        envPatch?: Record<string, string>
+      ) => Promise<{ status: "success" | "failed"; exitCode: number | null; stdout: string; stderr: string; error: string | null }>;
+    }).executeCommand = async () => {
+      callCount += 1;
+      return {
+        status: "failed",
+        exitCode: 1,
+        stdout: "",
+        stderr: "Jest timeout of 5000ms exceeded while waiting for done() to be called.",
+        error: null
+      };
+    };
+
+    const task = await scheduler.createTask({
+      name: "retry-generic-timeout-none",
+      runner: "custom",
+      prompt: "retry generic timeout",
+      command: 'echo "{prompt}"',
+      workflowSteps: [
+        { name: "step-1", enabled: true, retryCount: 2, retryBackoffMs: 200 }
+      ],
+      intervalSec: 300
+    });
+
+    const run = await scheduler.runNow(task.id);
+    assert.equal(run.status, "failed");
+    assert.equal(callCount, 1);
   } finally {
     scheduler.shutdown();
     await rm(dir, { recursive: true, force: true });
@@ -551,6 +788,190 @@ test("workflow loop-from-start can stop after current round completes", async ()
     assert.equal(run.status, "cancelled");
     assert.equal(run.error, "stop requested after current round");
     assert.equal(calls.length, 2);
+  } finally {
+    scheduler.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("workflow loop-from-start stops before next round when continueOnError captured a failure", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-stop-on-round-failure-"));
+  const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
+  await scheduler.init();
+  try {
+    const calls: string[] = [];
+    (scheduler as unknown as {
+      executeCommand: (
+        command: string,
+        cwd: string,
+        timeoutSec: number,
+        envPatch?: Record<string, string>
+      ) => Promise<{ status: "success" | "failed"; exitCode: number; stdout: string; stderr: string; error: string | null }>;
+    }).executeCommand = async (command) => {
+      calls.push(command);
+      if (command.includes("[Step 1/2]")) {
+        return {
+          status: "failed",
+          exitCode: 3,
+          stdout: "",
+          stderr: "step-1 failed",
+          error: "step-1 failed"
+        };
+      }
+      return {
+        status: "success",
+        exitCode: 0,
+        stdout: "ok",
+        stderr: "",
+        error: null
+      };
+    };
+
+    const task = await scheduler.createTask({
+      name: "workflow-stop-on-round-failure",
+      runner: "custom",
+      prompt: "stop after failure round",
+      command: 'echo "{prompt}"',
+      workflowSteps: [
+        { name: "step-1", enabled: true, continueOnError: true },
+        { name: "step-2", enabled: true }
+      ],
+      workflowLoopFromStart: true,
+      intervalSec: 300
+    });
+
+    const run = await scheduler.runNow(task.id);
+    assert.equal(run.status, "failed");
+    assert.equal(calls.length, 2);
+    assert.match(run.error || "", /first failure at round 1, step 1\/2 \(step-1\)/);
+    assert.equal(run.stdout.includes("[round 2]"), false);
+  } finally {
+    scheduler.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("workflow definition update clears stale resume checkpoint", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-clear-checkpoint-"));
+  const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
+  await scheduler.init();
+  try {
+    let step2Failures = 0;
+    (scheduler as unknown as {
+      executeCommand: (
+        command: string,
+        cwd: string,
+        timeoutSec: number,
+        envPatch?: Record<string, string>
+      ) => Promise<{ status: "success" | "failed"; exitCode: number; stdout: string; stderr: string; error: string | null }>;
+    }).executeCommand = async (command) => {
+      if (command.includes("[Step 2/2]") && step2Failures === 0) {
+        step2Failures += 1;
+        return {
+          status: "failed",
+          exitCode: 9,
+          stdout: "",
+          stderr: "step2 failed once",
+          error: "step2 failed once"
+        };
+      }
+      return {
+        status: "success",
+        exitCode: 0,
+        stdout: "ok",
+        stderr: "",
+        error: null
+      };
+    };
+
+    const task = await scheduler.createTask({
+      name: "workflow-clear-checkpoint",
+      runner: "custom",
+      prompt: "clear checkpoint on workflow change",
+      command: 'echo "{prompt}"',
+      workflowSteps: [
+        { name: "step-1", enabled: true },
+        { name: "step-2", enabled: true }
+      ],
+      intervalSec: 300
+    });
+
+    const firstRun = await scheduler.runNow(task.id);
+    assert.equal(firstRun.status, "failed");
+    const checkpointed = scheduler.listTasks().find((item) => item.id === task.id);
+    assert.equal(checkpointed?.workflowResumeStepIndex, 2);
+
+    const updated = await scheduler.updateTask(task.id, {
+      workflowSteps: [{ name: "step-1", enabled: true }]
+    });
+    assert.equal(updated.workflowResumeStepIndex, null);
+    assert.equal(updated.workflowResumeUpdatedAt, null);
+    assert.equal(updated.workflowResumeReason, null);
+  } finally {
+    scheduler.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("non-workflow update keeps resume checkpoint when workflow payload is unchanged", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-keep-checkpoint-"));
+  const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
+  await scheduler.init();
+  try {
+    let step2Failures = 0;
+    (scheduler as unknown as {
+      executeCommand: (
+        command: string,
+        cwd: string,
+        timeoutSec: number,
+        envPatch?: Record<string, string>
+      ) => Promise<{ status: "success" | "failed"; exitCode: number; stdout: string; stderr: string; error: string | null }>;
+    }).executeCommand = async (command) => {
+      if (command.includes("[Step 2/2]") && step2Failures === 0) {
+        step2Failures += 1;
+        return {
+          status: "failed",
+          exitCode: 7,
+          stdout: "",
+          stderr: "step2 failed once",
+          error: "step2 failed once"
+        };
+      }
+      return {
+        status: "success",
+        exitCode: 0,
+        stdout: "ok",
+        stderr: "",
+        error: null
+      };
+    };
+
+    const task = await scheduler.createTask({
+      name: "workflow-keep-checkpoint",
+      runner: "custom",
+      prompt: "keep checkpoint on non-workflow update",
+      command: 'echo "{prompt}"',
+      workflowSteps: [
+        { name: "step-1", enabled: true },
+        { name: "step-2", enabled: true }
+      ],
+      intervalSec: 300
+    });
+
+    const firstRun = await scheduler.runNow(task.id);
+    assert.equal(firstRun.status, "failed");
+    const checkpointed = scheduler.listTasks().find((item) => item.id === task.id);
+    assert.equal(checkpointed?.workflowResumeStepIndex, 2);
+    assert.equal(Boolean(checkpointed?.workflowResumeReason), true);
+
+    const updated = await scheduler.updateTask(task.id, {
+      prompt: "keep checkpoint on non-workflow update v2",
+      workflow: "",
+      workflowSteps: checkpointed?.workflowSteps || []
+    });
+    assert.equal(updated.workflowResumeStepIndex, 2);
+    assert.equal(Boolean(updated.workflowResumeUpdatedAt), true);
+    assert.equal(Boolean(updated.workflowResumeReason), true);
   } finally {
     scheduler.shutdown();
     await rm(dir, { recursive: true, force: true });

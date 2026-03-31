@@ -167,7 +167,8 @@ function normalizeTaskInput(raw: CreateLoopTaskInput | UpdateLoopTaskInput): Upd
 
 function buildCommand(runner: LoopRunner, command: string | null | undefined, prompt: string, fullAccess = false): string {
   if (command) {
-    return interpolatePromptTemplate(command, prompt);
+    const interpolated = interpolatePromptTemplate(command, prompt);
+    return injectCodexAccessFlag(interpolated, fullAccess);
   }
   if (runner === "claude_code") {
     return `claude -p ${shellQuoteArg(prompt)}`;
@@ -187,6 +188,30 @@ function interpolatePromptTemplate(commandTemplate: string, prompt: string): str
     .replaceAll('"{prompt}"', quotedPrompt)
     .replaceAll("'{prompt}'", quotedPrompt)
     .replaceAll("{prompt}", quotedPrompt);
+}
+
+function hasCodexAccessFlag(command: string): boolean {
+  const normalized = normalizeSpace(command);
+  return normalized.includes("--full-auto")
+    || normalized.includes("--dangerously-bypass-approvals-and-sandbox");
+}
+
+function injectCodexAccessFlag(command: string, fullAccess: boolean): string {
+  if (!command || hasCodexAccessFlag(command)) {
+    return command;
+  }
+  const accessFlag = fullAccess
+    ? "--dangerously-bypass-approvals-and-sandbox"
+    : "--full-auto";
+  const resumePrefix = /^(\s*codex\s+exec\s+resume(?:\s+--last)?(?:\s+--all)?)(?=\s|$)/;
+  if (resumePrefix.test(command)) {
+    return command.replace(resumePrefix, `$1 ${accessFlag}`);
+  }
+  const execPrefix = /^(\s*codex\s+exec)(?=\s|$)/;
+  if (execPrefix.test(command)) {
+    return command.replace(execPrefix, `$1 ${accessFlag}`);
+  }
+  return command;
 }
 
 function normalizeSpace(value: string): string {
@@ -276,6 +301,67 @@ function parseOptionalBoolean(value: unknown): boolean | undefined {
   return undefined;
 }
 
+const STEP_RETRY_COUNT_MIN = 0;
+const STEP_RETRY_COUNT_MAX = 8;
+const STEP_RETRY_BACKOFF_MS_MIN = 200;
+const STEP_RETRY_BACKOFF_MS_MAX = 30000;
+const STEP_RETRY_BACKOFF_DEFAULT_MS = 1200;
+const STEP_RETRY_BACKOFF_CAP_MS = 60000;
+
+function normalizeStepRetryCount(value: unknown): number {
+  return parseBoundedNumber(value, STEP_RETRY_COUNT_MIN, STEP_RETRY_COUNT_MAX) ?? 0;
+}
+
+function normalizeStepRetryBackoffMs(value: unknown): number {
+  return parseBoundedNumber(value, STEP_RETRY_BACKOFF_MS_MIN, STEP_RETRY_BACKOFF_MS_MAX)
+    ?? STEP_RETRY_BACKOFF_DEFAULT_MS;
+}
+
+function computeStepRetryDelayMs(baseDelayMs: number, retryAttempt: number): number {
+  const exponent = Math.max(0, retryAttempt - 1);
+  const delay = Math.floor(baseDelayMs * (2 ** exponent));
+  return Math.max(0, Math.min(delay, STEP_RETRY_BACKOFF_CAP_MS));
+}
+
+function isRetryableUpstreamFailure(result: CommandExecutionResult): boolean {
+  if (result.status === "success" || result.status === "cancelled") {
+    return false;
+  }
+  const merged = `${result.error || ""}\n${result.stderr || ""}\n${result.stdout || ""}`;
+  const text = merged.toLowerCase();
+  if (!text.trim()) {
+    return false;
+  }
+  const hasNetworkContext = /(http|status|upstream|gateway|cloudflare|cf-ray|socket|connect|tls|dns|network|econn|enotfound|ehostunreach)/.test(text);
+  if (/(^|\b)(http|status|statuscode|status_code|code)\s*[:=]?\s*[45]\d{2}(\b|$)/i.test(merged)) {
+    return true;
+  }
+  if (/\b(?:4\d{2}|5\d{2})\b/.test(text) && /(http|status|upstream|gateway|cloudflare|cf-ray)/.test(text)) {
+    return true;
+  }
+  if (/\b(?:timeout|timed out)\b/.test(text) && hasNetworkContext) {
+    return true;
+  }
+  return [
+    "cloudflare",
+    "cf-ray",
+    "upstream",
+    "gateway timeout",
+    "too many requests",
+    "rate limit",
+    "network error",
+    "socket hang up",
+    "etimedout",
+    "econnreset",
+    "econnrefused",
+    "ehostunreach",
+    "enotfound",
+    "tls handshake",
+    "service unavailable",
+    "bad gateway"
+  ].some((keyword) => text.includes(keyword));
+}
+
 function ensureWorkflowSteps(
   stepsValue: WorkflowStep[] | string | undefined,
   workflowFallback: string[]
@@ -291,6 +377,8 @@ function ensureWorkflowSteps(
           cwd: step && step.cwd != null ? String(step.cwd).trim() || null : undefined,
           command: step && step.command != null ? String(step.command).trim() || null : undefined,
           promptAppend: step && step.promptAppend ? String(step.promptAppend).trim() : undefined,
+          retryCount: normalizeStepRetryCount(step && step.retryCount),
+          retryBackoffMs: normalizeStepRetryBackoffMs(step && step.retryBackoffMs),
           timeoutSec: undefined,
           continueOnError: continueOnError ?? false,
           enabled: enabled ?? true
@@ -303,15 +391,72 @@ function ensureWorkflowSteps(
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean)
-      .map((name) => ({ name, enabled: true, continueOnError: false }));
+      .map((name) => ({
+        name,
+        enabled: true,
+        continueOnError: false,
+        retryCount: 0,
+        retryBackoffMs: STEP_RETRY_BACKOFF_DEFAULT_MS
+      }));
   }
-  return workflowFallback.map((name) => ({ name, enabled: true, continueOnError: false }));
+  return workflowFallback.map((name) => ({
+    name,
+    enabled: true,
+    continueOnError: false,
+    retryCount: 0,
+    retryBackoffMs: STEP_RETRY_BACKOFF_DEFAULT_MS
+  }));
 }
 
 function ensureWorkflowHasEnabledSteps(workflowSteps: WorkflowStep[]): void {
   if (workflowSteps.length > 0 && workflowSteps.every((step) => step.enabled === false)) {
     throw new Error("workflow must have at least one enabled step");
   }
+}
+
+function normalizeWorkflowForDiff(workflow: string[]): string[] {
+  return workflow.map((item) => String(item || "").trim());
+}
+
+function normalizeWorkflowStepForDiff(step: WorkflowStep): {
+  name: string;
+  runner: string | null;
+  cwd: string | null;
+  command: string | null;
+  promptAppend: string | null;
+  retryCount: number;
+  retryBackoffMs: number;
+  continueOnError: boolean;
+  enabled: boolean;
+} {
+  return {
+    name: String(step && step.name ? step.name : "").trim(),
+    runner: step && step.runner ? String(step.runner) : null,
+    cwd: step && step.cwd != null ? String(step.cwd).trim() || null : null,
+    command: step && step.command != null ? String(step.command).trim() || null : null,
+    promptAppend: step && step.promptAppend ? String(step.promptAppend).trim() || null : null,
+    retryCount: normalizeStepRetryCount(step && step.retryCount),
+    retryBackoffMs: normalizeStepRetryBackoffMs(step && step.retryBackoffMs),
+    continueOnError: parseOptionalBoolean(step && step.continueOnError) ?? false,
+    enabled: parseOptionalBoolean(step && step.enabled) ?? true
+  };
+}
+
+function isWorkflowDefinitionEqual(
+  leftWorkflow: string[],
+  leftSteps: WorkflowStep[],
+  rightWorkflow: string[],
+  rightSteps: WorkflowStep[]
+): boolean {
+  const left = {
+    workflow: normalizeWorkflowForDiff(leftWorkflow),
+    workflowSteps: leftSteps.map(normalizeWorkflowStepForDiff)
+  };
+  const right = {
+    workflow: normalizeWorkflowForDiff(rightWorkflow),
+    workflowSteps: rightSteps.map(normalizeWorkflowStepForDiff)
+  };
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function hasNoEnabledWorkflowSteps(task: LoopTask): boolean {
@@ -620,8 +765,10 @@ export class LoopScheduler {
           : ensureWorkflowSteps(undefined, workflow)
       )
       : ensureWorkflowSteps(normalized.workflowSteps, workflow);
-    const workflowDefinitionChanged = normalized.workflow !== undefined || normalized.workflowSteps !== undefined;
-    if (workflowDefinitionChanged) {
+    const workflowInputProvided = normalized.workflow !== undefined || normalized.workflowSteps !== undefined;
+    const workflowDefinitionChanged = workflowInputProvided
+      && !isWorkflowDefinitionEqual(current.workflow, current.workflowSteps, workflow, workflowSteps);
+    if (workflowInputProvided) {
       ensureWorkflowHasEnabledSteps(workflowSteps);
     }
     const workflowLoopFromStart = normalized.workflowLoopFromStart === undefined
@@ -646,6 +793,11 @@ export class LoopScheduler {
       workflowFullAccess,
       updatedAt: nowIso()
     };
+    if (workflowDefinitionChanged) {
+      next.workflowResumeStepIndex = null;
+      next.workflowResumeUpdatedAt = null;
+      next.workflowResumeReason = null;
+    }
 
     if (!next.name) {
       throw new Error("name cannot be empty");
@@ -702,7 +854,7 @@ export class LoopScheduler {
   ): { running: boolean; queued: number; deferred: boolean } {
     const queued = this.removeQueuedRuns(taskId, reason);
     const running = this.cancelRunningTask(taskId, reason, options);
-    const deferred = Boolean(options && options.afterRound && running);
+    const deferred = Boolean(options && options.afterRound && running && this.tasks.get(taskId)?.workflowLoopFromStart);
     return { running, queued, deferred };
   }
 
@@ -711,7 +863,7 @@ export class LoopScheduler {
     if (!control) {
       return false;
     }
-    if (options && options.afterRound) {
+    if (options && options.afterRound && this.tasks.get(taskId)?.workflowLoopFromStart) {
       control.stopAfterRoundReason = reason;
       return true;
     }
@@ -1334,6 +1486,7 @@ export class LoopScheduler {
         let roundStartStepIdx = initialStepIdx;
         let stopAll = false;
         while (!stopAll) {
+          let roundHadFailure = false;
           const currentControl = this.runningControls.get(task.id);
           if (currentControl && currentControl.runId === runId && currentControl.cancelReason) {
             finalStatus = "cancelled";
@@ -1402,42 +1555,92 @@ export class LoopScheduler {
             const stepEnv = useManagedCodex && codexSessionHome
               ? { CODEX_HOME: codexSessionHome }
               : undefined;
-            const stepResult = await this.executeCommand(
-              cmd,
-              stepContext.cwd,
-              stepTimeout,
-              stepEnv,
-              (child) => {
-                const current = this.runningControls.get(task.id);
-                if (current && current.runId === runId) {
-                  current.child = child;
-                  if (current.cancelReason) {
-                    try {
-                      child.kill("SIGTERM");
-                    } catch {}
-                  }
-                }
-              },
-              () => {
-                const current = this.runningControls.get(task.id);
-                if (!current || current.runId !== runId) {
-                  return null;
-                }
-                return current.cancelReason;
-              },
-              (stream, chunk) => {
-                this.appendLiveOutput(runId, stream, chunk);
-              },
-              () => {
-                this.touchLiveRunHeartbeat(runId);
+            const retryCount = normalizeStepRetryCount(step.retryCount);
+            const retryBackoffMs = normalizeStepRetryBackoffMs(step.retryBackoffMs);
+            let retryAttempt = 0;
+            let stepResult: CommandExecutionResult = {
+              status: "failed",
+              exitCode: null,
+              stdout: "",
+              stderr: "",
+              error: "step execution was not started"
+            };
+            let stepStdoutMerged = "";
+            let stepStderrMerged = "";
+            while (true) {
+              const currentAttempt = retryAttempt + 1;
+              if (currentAttempt > 1) {
+                this.pushLiveEvent(
+                  runId,
+                  "info",
+                  `step ${i + 1}/${steps.length} retry attempt ${currentAttempt}/${retryCount + 1} started`
+                );
               }
-            );
+              const result = await this.executeCommand(
+                cmd,
+                stepContext.cwd,
+                stepTimeout,
+                stepEnv,
+                (child) => {
+                  const current = this.runningControls.get(task.id);
+                  if (current && current.runId === runId) {
+                    current.child = child;
+                    if (current.cancelReason) {
+                      try {
+                        child.kill("SIGTERM");
+                      } catch {}
+                    }
+                  }
+                },
+                () => {
+                  const current = this.runningControls.get(task.id);
+                  if (!current || current.runId !== runId) {
+                    return null;
+                  }
+                  return current.cancelReason;
+                },
+                (stream, chunk) => {
+                  this.appendLiveOutput(runId, stream, chunk);
+                },
+                () => {
+                  this.touchLiveRunHeartbeat(runId);
+                }
+              );
+              stepStdoutMerged += `[attempt ${currentAttempt}/${retryCount + 1}]\n${result.stdout}\n`;
+              stepStderrMerged += `[attempt ${currentAttempt}/${retryCount + 1}]\n${result.stderr}\n`;
+              const shouldRetry = retryAttempt < retryCount && isRetryableUpstreamFailure(result);
+              if (!shouldRetry) {
+                stepResult = result;
+                break;
+              }
+              const waitMs = computeStepRetryDelayMs(retryBackoffMs, currentAttempt);
+              this.pushLiveEvent(
+                runId,
+                "info",
+                `step ${i + 1}/${steps.length} hit retryable upstream/network failure, retry in ${waitMs}ms`
+              );
+              const continueRetry = await this.waitForRetryDelay(task.id, runId, waitMs);
+              if (!continueRetry) {
+                const current = this.runningControls.get(task.id);
+                const cancelReason = current && current.runId === runId ? current.cancelReason : null;
+                stepResult = {
+                  status: "cancelled",
+                  exitCode: null,
+                  stdout: result.stdout,
+                  stderr: result.stderr,
+                  error: cancelReason || "retry wait cancelled"
+                };
+                break;
+              }
+              retryAttempt += 1;
+            }
             if (useManagedCodex) {
               codexSharedSessionStarted = true;
             }
-            mergedStdout += `[round ${round}] [step ${i + 1}/${steps.length}] ${step.name} (runner=${effectiveRunner}, timeout=disabled)\n${stepResult.stdout}\n`;
-            mergedStderr += `[round ${round}] [step ${i + 1}/${steps.length}] ${step.name} (runner=${effectiveRunner}, timeout=disabled)\n${stepResult.stderr}\n`;
+            mergedStdout += `[round ${round}] [step ${i + 1}/${steps.length}] ${step.name} (runner=${effectiveRunner}, timeout=disabled)\n${stepStdoutMerged}\n`;
+            mergedStderr += `[round ${round}] [step ${i + 1}/${steps.length}] ${step.name} (runner=${effectiveRunner}, timeout=disabled)\n${stepStderrMerged}\n`;
             if (stepResult.status !== "success") {
+              roundHadFailure = true;
               this.pushLiveEvent(
                 runId,
                 "error",
@@ -1465,6 +1668,10 @@ export class LoopScheduler {
             }
             this.pushLiveEvent(runId, "info", `step ${i + 1}/${steps.length} completed successfully`);
             finalExitCode = stepResult.exitCode;
+          }
+          if (roundHadFailure) {
+            this.pushLiveEvent(runId, "info", `round ${round} completed with failure(s), stopping loop`);
+            break;
           }
           if (!task.workflowLoopFromStart || stopAll) {
             break;
@@ -1673,6 +1880,23 @@ export class LoopScheduler {
         });
       });
     });
+  }
+
+  private async waitForRetryDelay(taskId: string, runId: string, waitMs: number): Promise<boolean> {
+    if (waitMs <= 0) {
+      return true;
+    }
+    const end = Date.now() + waitMs;
+    while (Date.now() < end) {
+      const control = this.runningControls.get(taskId);
+      if (control && control.runId === runId && control.cancelReason) {
+        return false;
+      }
+      const remain = end - Date.now();
+      const chunk = Math.max(1, Math.min(remain, 250));
+      await new Promise((resolve) => setTimeout(resolve, chunk));
+    }
+    return true;
   }
 
   private pushRun(run: LoopRun): void {

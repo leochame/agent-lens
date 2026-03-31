@@ -171,6 +171,7 @@ export function forwardRequest(input: ForwardRequest): Promise<ForwardResult> {
     };
 
     const sendAttempt = (): void => {
+      let retryScheduledByTimeout = false;
       const request = client.request(options, (upstreamRes) => {
         if (request !== upstreamReq) {
           upstreamRes.resume();
@@ -271,6 +272,7 @@ export function forwardRequest(input: ForwardRequest): Promise<ForwardResult> {
         if (attempt < MAX_UPSTREAM_RETRY_ATTEMPTS && !res.headersSent) {
           const delayMs = exponentialBackoffMs(attempt);
           attempt += 1;
+          retryScheduledByTimeout = true;
           request.destroy();
           setTimeout(() => {
             if (!settled && request === upstreamReq && !res.headersSent) {
@@ -287,6 +289,9 @@ export function forwardRequest(input: ForwardRequest): Promise<ForwardResult> {
           return;
         }
         if (settled) {
+          return;
+        }
+        if (retryScheduledByTimeout) {
           return;
         }
         if (attempt < MAX_UPSTREAM_RETRY_ATTEMPTS && !res.headersSent) {

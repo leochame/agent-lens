@@ -218,6 +218,32 @@ test("stopTask cancels running task", async () => {
   }
 });
 
+test("stop-after-round on non-loop task falls back to immediate stop", async () => {
+  const { scheduler, cleanup } = await createScheduler();
+  try {
+    const task = await scheduler.createTask({
+      name: "non-loop-stop-after-round-fallback",
+      runner: "custom",
+      prompt: "run",
+      command: 'node -e "setInterval(() => {}, 1000)"',
+      workflowLoopFromStart: false,
+      intervalSec: 300
+    });
+
+    const pending = scheduler.runNow(task.id);
+    await waitFor(() => scheduler.getSettings().runningCount === 1);
+    const stopInfo = scheduler.stopTask(task.id, "stop requested after current round", { afterRound: true });
+    const run = await pending;
+
+    assert.equal(stopInfo.running, true);
+    assert.equal(stopInfo.deferred, false);
+    assert.equal(run.status, "cancelled");
+    assert.equal(run.error, "stop requested after current round");
+  } finally {
+    await cleanup();
+  }
+});
+
 test("deleteTask cancels running task", async () => {
   const { scheduler, cleanup } = await createScheduler();
   try {

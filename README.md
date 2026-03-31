@@ -44,31 +44,31 @@ After startup, open: `http://127.0.0.1:5290/__loop`
 
 This is a standalone feature and does not change existing proxy behavior. It supports:
 - Creating recurring loop tasks (interval, working directory or file path)
-- Runner presets: `Codex` (default) / `Claude Code` / `Custom`
+- Runner (currently fixed to `Custom` in the frontend; you can still call local `codex` / `claude` CLIs via command)
 - Run now, enable/disable, delete
 - Test-run before saving
 - Path check (directory/file); file path automatically runs from its parent directory
 - Codex template library (one-click common task presets)
-- Favorite paths (saved in browser local storage)
-- Reuse last successful test configuration (saved in browser local storage)
+- Last successful test configuration is written to browser local storage (currently saved only, not auto-restored)
 - Task edit mode and clone-to-form for quick creation
-- Task list search filter (by name/runner)
+- Task list search filter (by name)
 - Multi-task parallel execution (configurable global max concurrency with queueing)
-- Single-task multi-stage workflow (one line per stage, e.g. "dev -> code review")
+- Single-task multi-stage workflow (step-by-step orchestration)
 - Workflow shared session (enabled by default; reuses one Codex session across steps/rounds of the same task)
 - Codex access mode switch (standard / Full Access)
-- Per-step runner/command override (format: `step|runner|command`)
+- Per-step runner/command override (via visual workflow editor)
 - Per-step cwd/file-path override from frontend visual editor (directory runs directly; file runs from parent directory)
-- Per-step failure policy override (format: `step|runner|command|continue/stop`)
-- Visual workflow step editor (add/remove/reorder/enable, with two-way sync to text)
+- Per-step failure policy override (continue/stop, via visual workflow editor)
+- Visual workflow step editor (add/remove/reorder/enable)
 - Visual editor supports advanced-field toggle (simple/full mode)
 - Built-in step template library (dev/review/summary/test) with one-click insert
-- Text format with prompt append + enable flag: `step|runner|command|promptAppend|continue/stop|on/off`
 - Viewing recent run logs (stdout/stderr/status)
 
 Notes:
 - Tasks execute local shell commands (for example `claude -p "{prompt}"`, `codex exec "{prompt}"`)
 - Loop tasks have no built-in timeout; they end on command failure, manual stop, or upstream/proxy errors
+- Because timeout is not enforced, a single long-running/hung step can keep occupying one concurrency slot
+- `workflowLoopFromStart=true` is infinite-loop semantics: after each successful round it starts the next round automatically, and will not auto-close by itself
 - Full Access bypasses sandbox/approvals; enable only in trusted environments
 - CLI arguments vary by local version; adjust with custom command if needed
 - Task config is persisted at `config/loop-tasks.json`

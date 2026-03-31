@@ -6,6 +6,8 @@ export type WorkflowStep = {
   cwd?: string | null;
   command?: string | null;
   promptAppend?: string;
+  retryCount?: number;
+  retryBackoffMs?: number;
   // Legacy compatibility field. Runtime does not enforce step timeout.
   timeoutSec?: number;
   continueOnError?: boolean;
