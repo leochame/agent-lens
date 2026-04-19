@@ -1,0 +1,15 @@
+{
+  "taskId": "fbe93199-e795-4abc-acfc-305bbf2eb2d0",
+  "records": [
+    {
+      "at": "2026-03-31T12:09:43.440Z",
+      "prompt": "shared session prompt",
+      "result": {
+        "status": "success",
+        "error": null,
+        "stdout": "[round 1] [step 1/2] step-1 (runner=custom, timeout=disabled)\n[attempt 1/1]\nok\n\n[round 1] [step 2/2] step-2 (runner=custom, timeout=disabled)\n[attempt 1/1]\nok\n\n",
+        "stderr": "[round 1] [step 1/2] step-1 (runner=custom, timeout=disabled)\n[attempt 1/1]\n\n\n[round 1] [step 2/2] step-2 (runner=custom, timeout=disabled)\n[attempt 1/1]\n\n\n"
+      }
+    }
+  ]
+}

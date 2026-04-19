@@ -1,0 +1,34 @@
+{
+  "baseUrl": "http://127.0.0.1:5291",
+  "screenshotsDir": "/Users/leocham/Documents/code/03-agent-lens-root/agent-lens/.artifacts/ui-check",
+  "errors": [],
+  "home": {
+    "title": "AgentLens Home",
+    "moduleCards": 4,
+    "navToRouterWorks": true
+  },
+  "router": {
+    "title": "AgentLens Router",
+    "providerCountBefore": 2,
+    "providerCountAfterAdd": 3,
+    "providerCountAfterDelete": 3,
+    "providerCountAfterReload": 3,
+    "addButtonWorks": true,
+    "deleteButtonWorks": false,
+    "reloadButtonWorks": false
+  },
+  "log": {
+    "title": "AgentLens Logs (All)",
+    "adminCompatibilityRedirects": true,
+    "refreshButtonClickable": true,
+    "visibleLogItems": 0
+  },
+  "loop": {
+    "title": "AgentLens Loop Scheduler",
+    "testRunMessage": "测试成功",
+    "taskCreated": true,
+    "runButtonClickable": true,
+    "deleteButtonClickable": true,
+    "taskDeleted": true
+  }
+}

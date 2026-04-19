@@ -1,0 +1,1444 @@
+{
+  "home": {
+    "title": "AgentLens Home",
+    "buttons": [
+      {
+        "tag": "a",
+        "text": "Home Home 入口与信息架构 当前页",
+        "id": null,
+        "href": "/",
+        "cls": "workbench-link active"
+      },
+      {
+        "tag": "a",
+        "text": "Router Router 上游与转发配置 进入",
+        "id": null,
+        "href": "/__router",
+        "cls": "workbench-link"
+      },
+      {
+        "tag": "a",
+        "text": "Log Log 归档日志详情 进入",
+        "id": null,
+        "href": "/__log",
+        "cls": "workbench-link"
+      },
+      {
+        "tag": "a",
+        "text": "Loop Loop Workflow 与运行 进入",
+        "id": null,
+        "href": "/__loop",
+        "cls": "workbench-link"
+      },
+      {
+        "tag": "a",
+        "text": "Router 进入 转发与上游工作区 继续保留透明转发能力。这里处理监听、provider、默认路由与保存状态。 listen / provider / route Open",
+        "id": null,
+        "href": "/__router",
+        "cls": "entry-card"
+      },
+      {
+        "tag": "a",
+        "text": "Log 进入 归档与日志工作区 只显示带完整 archived detail 的 request-response 配对，原生请求优先，SSE 仅做展示聚合。 archive / body.text / SSE Open",
+        "id": null,
+        "href": "/__log",
+        "cls": "entry-card"
+      },
+      {
+        "tag": "a",
+        "text": "Loop 进入 Workflow 搭建工作区 以 workflow-first 方式组织任务搭建、运行中状态、队列与历史，同时兼容单命令模式。 workflow / queue / runs Open",
+        "id": null,
+        "href": "/__loop",
+        "cls": "entry-card"
+      }
+    ],
+    "inputs": [],
+    "texts": [
+      "AgentLens Console",
+      "AgentLens",
+      "侧边栏是进入各域的唯一主导航。",
+      "系统分区",
+      "4 个域",
+      "首页与导航",
+      "上游与路由",
+      "归档与详情",
+      "任务与运行",
+      "Home Home 入口与信息架构 当前页",
+      "Home",
+      "入口与信息架构",
+      "当前页",
+      "Router Router 上游与转发配置 进入",
+      "Router",
+      "上游与转发配置",
+      "进入",
+      "Log Log 归档日志详情 进入",
+      "Log",
+      "归档日志详情",
+      "Loop Loop Workflow 与运行 进入",
+      "Loop",
+      "Workflow 与运行",
+      "导航规则",
+      "/__admin 兼容入口保留。",
+      "AgentLens Front Door",
+      "一块只负责分流与定向的黑灰工作台。",
+      "首页不承担配置写入、日志查看或任务执行。它只负责解释四个域的边界，并把你送进正确的工作区。",
+      "只做入口，不做操作",
+      "router / log / loop 明确分域",
+      "统一导航，统一黑灰材质",
+      "当前规则",
+      "如果你要改上游，去 router；如果你要看 archive，去 log；如果你要搭 workflow，去 loop。",
+      "入口原则",
+      "首页只保留跳转能力，不承载配置表单、日志列表或任务执行按钮。",
+      "Router 进入 转发与上游工作区 继续保留透明转发能力。这里处理监听、provider、默认路由与保存状态。 listen / provider / route Open",
+      "转发与上游工作区",
+      "继续保留透明转发能力。这里处理监听、provider、默认路由与保存状态。",
+      "listen / provider / route",
+      "Open",
+      "Log 进入 归档与日志工作区 只显示带完整 archived detail 的 request-response 配对，原生请求优先，SSE 仅做展示聚合。 archive / body.text / SSE Open",
+      "归档与日志工作区",
+      "只显示带完整 archived detail 的 request-response 配对，原生请求优先，SSE 仅做展示聚合。",
+      "archive / body.text / SSE",
+      "Loop 进入 Workflow 搭建工作区 以 workflow-first 方式组织任务搭建、运行中状态、队列与历史，同时兼容单命令模式。 workflow / queue / runs Open",
+      "Workflow 搭建工作区",
+      "以 workflow-first 方式组织任务搭建、运行中状态、队列与历史，同时兼容单命令模式。",
+      "workflow / queue / runs",
+      "Structure",
+      "每个页面只做一类事。",
+      "只保留入口说明和页面边界，不承载业务操作。",
+      "保留转发能力与配置编辑，不混入日志详情。",
+      "按请求类型查看 archive，以 requestId 配对，展示层可做 JSON 树与 SSE 聚合。",
+      "负责 workflow 搭建、执行、恢复、排队和历史，不把这些动作塞回首页或日志页。"
+    ],
+    "sections": [
+      {
+        "tag": "aside",
+        "cls": "workbench-sidebar",
+        "text": "AgentLens Console AgentLens 侧边栏是进入各域的唯一主导航。 系统分区 4 个域 frontend首页与导航 router上游与路由 log归档与详情 loop任务与运行 功能导航 Home Home 入口与信息架构 当前页 Router Router 上游与转发配置 进入 Log Log 归"
+      },
+      {
+        "tag": "div",
+        "cls": "workbench-sidebar-panel",
+        "text": "系统分区 4 个域 frontend首页与导航 router上游与路由 log归档与详情 loop任务与运行"
+      },
+      {
+        "tag": "div",
+        "cls": "workbench-panel-title",
+        "text": "系统分区 4 个域"
+      },
+      {
+        "tag": "div",
+        "cls": "workbench-sidebar-footer",
+        "text": "导航规则 /__admin 兼容入口保留。"
+      },
+      {
+        "tag": "div",
+        "cls": "page-shell",
+        "text": "Home AgentLens Front Door 一块只负责分流与定向的黑灰工作台。 首页不承担配置写入、日志查看或任务执行。它只负责解释四个域的边界，并把你送进正确的工作区。 只做入口，不做操作 router / log / loop 明确分域 统一导航，统一黑灰材质 当前规则 如果你要改上游，去 router；如"
+      },
+      {
+        "tag": "section",
+        "cls": "home-hero glass-card",
+        "text": "Home AgentLens Front Door 一块只负责分流与定向的黑灰工作台。 首页不承担配置写入、日志查看或任务执行。它只负责解释四个域的边界，并把你送进正确的工作区。 只做入口，不做操作 router / log / loop 明确分域 统一导航，统一黑灰材质 当前规则 如果你要改上游，去 router；如"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-grid",
+        "text": "Home AgentLens Front Door 一块只负责分流与定向的黑灰工作台。 首页不承担配置写入、日志查看或任务执行。它只负责解释四个域的边界，并把你送进正确的工作区。 只做入口，不做操作 router / log / loop 明确分域 统一导航，统一黑灰材质 当前规则 如果你要改上游，去 router；如"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-copy",
+        "text": "Home AgentLens Front Door 一块只负责分流与定向的黑灰工作台。 首页不承担配置写入、日志查看或任务执行。它只负责解释四个域的边界，并把你送进正确的工作区。 只做入口，不做操作 router / log / loop 明确分域 统一导航，统一黑灰材质"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-rule-strip",
+        "text": "只做入口，不做操作 router / log / loop 明确分域 统一导航，统一黑灰材质"
+      },
+      {
+        "tag": "aside",
+        "cls": "hero-aside",
+        "text": "当前规则 如果你要改上游，去 router；如果你要看 archive，去 log；如果你要搭 workflow，去 loop。 入口原则 首页只保留跳转能力，不承载配置表单、日志列表或任务执行按钮。"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-note",
+        "text": "当前规则 如果你要改上游，去 router；如果你要看 archive，去 log；如果你要搭 workflow，去 loop。"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-note hero-note-strong",
+        "text": "入口原则 首页只保留跳转能力，不承载配置表单、日志列表或任务执行按钮。"
+      },
+      {
+        "tag": "section",
+        "cls": "area-grid",
+        "text": "Router 进入 转发与上游工作区 继续保留透明转发能力。这里处理监听、provider、默认路由与保存状态。 listen / provider / route Open Log 进入 归档与日志工作区 只显示带完整 archived detail 的 request-response 配对，原生请求优先，SSE "
+      },
+      {
+        "tag": "div",
+        "cls": "entry-card-top",
+        "text": "Router 进入"
+      },
+      {
+        "tag": "div",
+        "cls": "entry-card-body",
+        "text": "转发与上游工作区 继续保留透明转发能力。这里处理监听、provider、默认路由与保存状态。"
+      },
+      {
+        "tag": "div",
+        "cls": "entry-card-footer",
+        "text": "listen / provider / route Open"
+      },
+      {
+        "tag": "div",
+        "cls": "entry-card-top",
+        "text": "Log 进入"
+      },
+      {
+        "tag": "div",
+        "cls": "entry-card-body",
+        "text": "归档与日志工作区 只显示带完整 archived detail 的 request-response 配对，原生请求优先，SSE 仅做展示聚合。"
+      },
+      {
+        "tag": "div",
+        "cls": "entry-card-footer",
+        "text": "archive / body.text / SSE Open"
+      },
+      {
+        "tag": "div",
+        "cls": "entry-card-top",
+        "text": "Loop 进入"
+      },
+      {
+        "tag": "div",
+        "cls": "entry-card-body",
+        "text": "Workflow 搭建工作区 以 workflow-first 方式组织任务搭建、运行中状态、队列与历史，同时兼容单命令模式。"
+      },
+      {
+        "tag": "div",
+        "cls": "entry-card-footer",
+        "text": "workflow / queue / runs Open"
+      },
+      {
+        "tag": "section",
+        "cls": "rules-strip glass-card",
+        "text": "Structure 每个页面只做一类事。 Home 只保留入口说明和页面边界，不承载业务操作。 Router 保留转发能力与配置编辑，不混入日志详情。 Log 按请求类型查看 archive，以 requestId 配对，展示层可做 JSON 树与 SSE 聚合。 Loop 负责 workflow 搭建、执行、恢复、排"
+      },
+      {
+        "tag": "div",
+        "cls": "rules-grid",
+        "text": "Home 只保留入口说明和页面边界，不承载业务操作。 Router 保留转发能力与配置编辑，不混入日志详情。 Log 按请求类型查看 archive，以 requestId 配对，展示层可做 JSON 树与 SSE 聚合。 Loop 负责 workflow 搭建、执行、恢复、排队和历史，不把这些动作塞回首页或日志页。"
+      },
+      {
+        "tag": "div",
+        "cls": "rule-card",
+        "text": "Home 只保留入口说明和页面边界，不承载业务操作。"
+      },
+      {
+        "tag": "div",
+        "cls": "rule-card",
+        "text": "Router 保留转发能力与配置编辑，不混入日志详情。"
+      },
+      {
+        "tag": "div",
+        "cls": "rule-card",
+        "text": "Log 按请求类型查看 archive，以 requestId 配对，展示层可做 JSON 树与 SSE 聚合。"
+      },
+      {
+        "tag": "div",
+        "cls": "rule-card",
+        "text": "Loop 负责 workflow 搭建、执行、恢复、排队和历史，不把这些动作塞回首页或日志页。"
+      }
+    ],
+    "body": "AGENTLENS CONSOLE AgentLens 侧边栏是进入各域的唯一主导航。 系统分区 4 个域 frontend 首页与导航 router 上游与路由 log 归档与详情 loop 任务与运行 功能导航 HOME Home 入口与信息架构 当前页 ROUTER Router 上游与转发配置 进入 LOG Log 归档日志详情 进入 LOOP Loop Workflow 与运行 进入 导航规则 /__admin 兼容入口保留。 HOME AGENTLENS FRONT DOOR 一块只负责分流与定向的黑灰工作台。 首页不承担配置写入、日志查看或任务执行。它只负责解释四个域的边界，并把你送进正确的工作区。 只做入口，不做操作 router / log / loop 明确分域 统一导航，统一黑灰材质 当前规则 如果你要改上游，去 router；如果你要看 archive，去 log；如果你要搭 workflow，去 loop。 入口原则 首页只保留跳转能力，不承载配置表单、日志列表或任务执行按钮。 ROUTER 进入 转发与上游工作区 继续保留透明转发能力。这里处理监听、provider、默认路由与保存状态。 listen / provider / route Open LOG 进入 归档与日志工作区 只显示带完整 archived detail 的 request-response 配对，原生请求优先，SSE 仅做展示聚合。 archive / body.text / SSE Open LOOP 进入 Workflow 搭建工作区 以 workflow-first 方式组织任务搭建、运行中状态、队列与历史，同时兼容单命令模式。 workflow / queue / runs Open STRUCTURE 每个页面只做一类事。 Home 只保留入口说明和页面边界，不承载业务操作。 Router 保留转发能力与配置编辑，不混入日志详情。 Log 按请求类型查看 archive，以 requestId 配对，展示层可做 JSON 树与 SSE 聚合。 Loop 负责 workflow 搭建、执行、恢复、排队和历史，不把这些动作塞回首页或日志页。"
+  },
+  "router": {
+    "title": "AgentLens Router",
+    "buttons": [
+      {
+        "tag": "a",
+        "text": "Home Home 入口与信息架构 进入",
+        "id": null,
+        "href": "/",
+        "cls": "workbench-link"
+      },
+      {
+        "tag": "a",
+        "text": "Router Router 上游与转发配置 当前页",
+        "id": null,
+        "href": "/__router",
+        "cls": "workbench-link active"
+      },
+      {
+        "tag": "a",
+        "text": "Log Log 归档日志详情 进入",
+        "id": null,
+        "href": "/__log",
+        "cls": "workbench-link"
+      },
+      {
+        "tag": "a",
+        "text": "Loop Loop Workflow 与运行 进入",
+        "id": null,
+        "href": "/__loop",
+        "cls": "workbench-link"
+      },
+      {
+        "tag": "button",
+        "text": "保存配置",
+        "id": "saveBtn",
+        "href": null,
+        "cls": ""
+      },
+      {
+        "tag": "button",
+        "text": "从文件重载",
+        "id": "reloadBtn",
+        "href": null,
+        "cls": "ghost"
+      },
+      {
+        "tag": "button",
+        "text": "添加上游",
+        "id": "addProvider",
+        "href": null,
+        "cls": "ghost"
+      },
+      {
+        "tag": "button",
+        "text": "删除上游",
+        "id": null,
+        "href": null,
+        "cls": "danger"
+      },
+      {
+        "tag": "button",
+        "text": "删除上游",
+        "id": null,
+        "href": null,
+        "cls": "danger"
+      }
+    ],
+    "inputs": [
+      {
+        "tag": "input",
+        "id": "listenHost",
+        "type": null,
+        "placeholder": "127.0.0.1",
+        "value": "127.0.0.1"
+      },
+      {
+        "tag": "input",
+        "id": "listenPort",
+        "type": "number",
+        "placeholder": null,
+        "value": "5291"
+      },
+      {
+        "tag": "select",
+        "id": "defaultProvider",
+        "type": null,
+        "placeholder": null,
+        "value": "openai"
+      },
+      {
+        "tag": "input",
+        "id": "timeoutMs",
+        "type": "number",
+        "placeholder": null,
+        "value": "120000"
+      },
+      {
+        "tag": "input",
+        "id": "routeHeader",
+        "type": null,
+        "placeholder": "x-target-provider",
+        "value": "x-target-provider"
+      },
+      {
+        "tag": "select",
+        "id": "autoDetect",
+        "type": null,
+        "placeholder": null,
+        "value": "true"
+      },
+      {
+        "tag": "select",
+        "id": "anthropicProvider",
+        "type": null,
+        "placeholder": null,
+        "value": "anthropic"
+      },
+      {
+        "tag": "select",
+        "id": "openaiProvider",
+        "type": null,
+        "placeholder": null,
+        "value": "openai"
+      },
+      {
+        "tag": "input",
+        "id": null,
+        "type": null,
+        "placeholder": "例如：中转站",
+        "value": "openai"
+      },
+      {
+        "tag": "input",
+        "id": null,
+        "type": null,
+        "placeholder": "https://api.example.com",
+        "value": "https://openai-relay.example.com/v1"
+      },
+      {
+        "tag": "select",
+        "id": null,
+        "type": null,
+        "placeholder": null,
+        "value": "inject"
+      },
+      {
+        "tag": "input",
+        "id": null,
+        "type": "password",
+        "placeholder": "sk-...",
+        "value": "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"
+      },
+      {
+        "tag": "input",
+        "id": null,
+        "type": null,
+        "placeholder": "例如：中转站",
+        "value": "anthropic"
+      },
+      {
+        "tag": "input",
+        "id": null,
+        "type": null,
+        "placeholder": "https://api.example.com",
+        "value": "https://anthropic-relay.example.com"
+      },
+      {
+        "tag": "select",
+        "id": null,
+        "type": null,
+        "placeholder": null,
+        "value": "inject"
+      },
+      {
+        "tag": "input",
+        "id": null,
+        "type": "password",
+        "placeholder": "sk-...",
+        "value": ""
+      }
+    ],
+    "texts": [
+      "AgentLens Console",
+      "AgentLens",
+      "侧边栏是进入各域的唯一主导航。",
+      "系统分区",
+      "4 个域",
+      "首页与导航",
+      "上游与路由",
+      "归档与详情",
+      "任务与运行",
+      "Home Home 入口与信息架构 进入",
+      "Home",
+      "入口与信息架构",
+      "进入",
+      "Router Router 上游与转发配置 当前页",
+      "Router",
+      "上游与转发配置",
+      "当前页",
+      "Log Log 归档日志详情 进入",
+      "Log",
+      "归档日志详情",
+      "Loop Loop Workflow 与运行 进入",
+      "Loop",
+      "Workflow 与运行",
+      "导航规则",
+      "/__admin 兼容入口保留。",
+      "当前查看：路由配置 / 上游配置 / 默认路由 / 透明转发",
+      "AgentLens Router",
+      "继续保留透明转发能力，只重构配置界面的信息组织与工作台体验。",
+      "透明代理",
+      "只整理配置界面，不改变转发语义。",
+      "分域控制",
+      "路由配置独立于日志与 loop 工作流。",
+      "配置已加载",
+      "已同步",
+      "保存配置",
+      "从文件重载",
+      "router 继续保留透明转发能力，只重构前端结构，不改后端行为。",
+      "全局设置",
+      "监听地址",
+      "监听端口",
+      "默认上游openaianthropic",
+      "请求超时 (ms)",
+      "路由请求头",
+      "自动识别格式 开启 关闭",
+      "Anthropic 默认上游(none)openaianthropic",
+      "OpenAI 默认上游(none)openaianthropic",
+      "治理原则",
+      "保留转发",
+      "配置只决定请求去向，不改变转发透明度。",
+      "配置检查",
+      "减少误配",
+      "监听地址、Provider 选择和默认上游在一个视野里核对。",
+      "所有 provider 都仍然按当前配置格式保存与转发。",
+      "上游列表",
+      "添加上游",
+      "Provider 名称",
+      "删除上游",
+      "Base URL",
+      "鉴权注入密钥透传",
+      "密钥"
+    ],
+    "sections": [
+      {
+        "tag": "aside",
+        "cls": "workbench-sidebar",
+        "text": "AgentLens Console AgentLens 侧边栏是进入各域的唯一主导航。 系统分区 4 个域 frontend首页与导航 router上游与路由 log归档与详情 loop任务与运行 功能导航 Home Home 入口与信息架构 进入 Router Router 上游与转发配置 当前页 Log Log 归"
+      },
+      {
+        "tag": "div",
+        "cls": "workbench-sidebar-panel",
+        "text": "系统分区 4 个域 frontend首页与导航 router上游与路由 log归档与详情 loop任务与运行"
+      },
+      {
+        "tag": "div",
+        "cls": "workbench-panel-title",
+        "text": "系统分区 4 个域"
+      },
+      {
+        "tag": "div",
+        "cls": "workbench-sidebar-footer",
+        "text": "导航规则 /__admin 兼容入口保留。"
+      },
+      {
+        "tag": "div",
+        "cls": "page-shell",
+        "text": "Router 当前查看：路由配置 / 上游配置 / 默认路由 / 透明转发 AgentLens Router 继续保留透明转发能力，只重构配置界面的信息组织与工作台体验。 透明代理 只整理配置界面，不改变转发语义。 分域控制 路由配置独立于日志与 loop 工作流。 配置状态 保存后立即生效，不改变已有路由与转发语义。"
+      },
+      {
+        "tag": "section",
+        "cls": "hero-slab",
+        "text": "Router 当前查看：路由配置 / 上游配置 / 默认路由 / 透明转发 AgentLens Router 继续保留透明转发能力，只重构配置界面的信息组织与工作台体验。 透明代理 只整理配置界面，不改变转发语义。 分域控制 路由配置独立于日志与 loop 工作流。 配置状态 保存后立即生效，不改变已有路由与转发语义。"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-grid",
+        "text": "Router 当前查看：路由配置 / 上游配置 / 默认路由 / 透明转发 AgentLens Router 继续保留透明转发能力，只重构配置界面的信息组织与工作台体验。 透明代理 只整理配置界面，不改变转发语义。 分域控制 路由配置独立于日志与 loop 工作流。 配置状态 保存后立即生效，不改变已有路由与转发语义。"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-copy",
+        "text": "Router 当前查看：路由配置 / 上游配置 / 默认路由 / 透明转发 AgentLens Router 继续保留透明转发能力，只重构配置界面的信息组织与工作台体验。 透明代理 只整理配置界面，不改变转发语义。 分域控制 路由配置独立于日志与 loop 工作流。"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-heading",
+        "text": "AgentLens Router 继续保留透明转发能力，只重构配置界面的信息组织与工作台体验。"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-principles",
+        "text": "透明代理 只整理配置界面，不改变转发语义。 分域控制 路由配置独立于日志与 loop 工作流。"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-principle",
+        "text": "透明代理 只整理配置界面，不改变转发语义。"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-principle",
+        "text": "分域控制 路由配置独立于日志与 loop 工作流。"
+      },
+      {
+        "tag": "aside",
+        "cls": "hero-side",
+        "text": "配置状态 保存后立即生效，不改变已有路由与转发语义。 配置已加载 已同步 保存配置 从文件重载 配置已加载。修改并保存后会立即生效。"
+      },
+      {
+        "tag": "div",
+        "cls": "status hero-card",
+        "text": "配置状态 保存后立即生效，不改变已有路由与转发语义。 配置已加载 已同步 保存配置 从文件重载"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-status",
+        "text": "配置已加载 已同步"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-actions",
+        "text": "保存配置 从文件重载"
+      },
+      {
+        "tag": "section",
+        "cls": "router-layout",
+        "text": "监听与分流 router 继续保留透明转发能力，只重构前端结构，不改后端行为。 全局设置 监听地址 监听端口 默认上游openaianthropic 请求超时 (ms) 路由请求头 自动识别格式 开启 关闭 Anthropic 默认上游(none)openaianthropic OpenAI 默认上游(none)ope"
+      },
+      {
+        "tag": "div",
+        "cls": "card wide-card",
+        "text": "监听与分流 router 继续保留透明转发能力，只重构前端结构，不改后端行为。 全局设置 监听地址 监听端口 默认上游openaianthropic 请求超时 (ms) 路由请求头 自动识别格式 开启 关闭 Anthropic 默认上游(none)openaianthropic OpenAI 默认上游(none)ope"
+      },
+      {
+        "tag": "div",
+        "cls": "grid",
+        "text": "监听地址 监听端口 默认上游openaianthropic 请求超时 (ms)"
+      },
+      {
+        "tag": "div",
+        "cls": "grid",
+        "text": "路由请求头 自动识别格式 开启 关闭 Anthropic 默认上游(none)openaianthropic OpenAI 默认上游(none)openaianthropic"
+      },
+      {
+        "tag": "div",
+        "cls": "stack-card",
+        "text": "治理原则 保留转发 配置只决定请求去向，不改变转发透明度。 配置检查 减少误配 监听地址、Provider 选择和默认上游在一个视野里核对。"
+      },
+      {
+        "tag": "div",
+        "cls": "mini-card",
+        "text": "治理原则 保留转发 配置只决定请求去向，不改变转发透明度。"
+      },
+      {
+        "tag": "div",
+        "cls": "mini-card",
+        "text": "配置检查 减少误配 监听地址、Provider 选择和默认上游在一个视野里核对。"
+      },
+      {
+        "tag": "div",
+        "cls": "card",
+        "text": "Provider 列表 所有 provider 都仍然按当前配置格式保存与转发。 上游列表 添加上游 Provider 名称删除上游Base URL鉴权注入密钥透传密钥Provider 名称删除上游Base URL鉴权注入密钥透传密钥"
+      },
+      {
+        "tag": "div",
+        "cls": "provider-list",
+        "text": "Provider 名称删除上游Base URL鉴权注入密钥透传密钥Provider 名称删除上游Base URL鉴权注入密钥透传密钥"
+      },
+      {
+        "tag": "div",
+        "cls": "provider-grid",
+        "text": "Base URL鉴权注入密钥透传密钥"
+      },
+      {
+        "tag": "div",
+        "cls": "provider-grid",
+        "text": "Base URL鉴权注入密钥透传密钥"
+      }
+    ],
+    "body": "AGENTLENS CONSOLE AgentLens 侧边栏是进入各域的唯一主导航。 系统分区 4 个域 frontend 首页与导航 router 上游与路由 log 归档与详情 loop 任务与运行 功能导航 HOME Home 入口与信息架构 进入 ROUTER Router 上游与转发配置 当前页 LOG Log 归档日志详情 进入 LOOP Loop Workflow 与运行 进入 导航规则 /__admin 兼容入口保留。 ROUTER 当前查看：路由配置 / 上游配置 / 默认路由 / 透明转发 AgentLens Router 继续保留透明转发能力，只重构配置界面的信息组织与工作台体验。 透明代理 只整理配置界面，不改变转发语义。 分域控制 路由配置独立于日志与 loop 工作流。 配置状态 保存后立即生效，不改变已有路由与转发语义。 配置已加载 已同步 保存配置 从文件重载 配置已加载。修改并保存后会立即生效。 监听与分流 router 继续保留透明转发能力，只重构前端结构，不改后端行为。 全局设置 监听地址 监听端口 默认上游 openai anthropic 请求超时 (ms) 路由请求头 自动识别格式 开启 关闭 Anthropic 默认上游 (none) openai anthropic OpenAI 默认上游 (none) openai anthropic 治理原则 保留转发 配置只决定请求去向，不改变转发透明度。 配置检查 减少误配 监听地址、Provider 选择和默认上游在一个视野里核对。 PROVIDER 列表 所有 provider 都仍然按当前配置格式保存与转发。 上游列表 添加上游 Provider 名称 删除上游 Base URL 鉴权 注入密钥 透传 密钥 Provider 名称 删除上游 Base URL 鉴权 注入密钥 透传 密钥"
+  },
+  "log": {
+    "title": "AgentLens Logs (All)",
+    "buttons": [
+      {
+        "tag": "a",
+        "text": "Home Home 入口与信息架构 进入",
+        "id": null,
+        "href": "/",
+        "cls": "workbench-link"
+      },
+      {
+        "tag": "a",
+        "text": "Router Router 上游与转发配置 进入",
+        "id": null,
+        "href": "/__router",
+        "cls": "workbench-link"
+      },
+      {
+        "tag": "a",
+        "text": "Log Log 归档日志详情 当前页",
+        "id": null,
+        "href": "/__log",
+        "cls": "workbench-link active"
+      },
+      {
+        "tag": "a",
+        "text": "Loop Loop Workflow 与运行 进入",
+        "id": null,
+        "href": "/__loop",
+        "cls": "workbench-link"
+      },
+      {
+        "tag": "a",
+        "text": "All",
+        "id": null,
+        "href": "/__log",
+        "cls": "view-segment active"
+      },
+      {
+        "tag": "a",
+        "text": "OpenAI",
+        "id": null,
+        "href": "/__log/openai",
+        "cls": "view-segment"
+      },
+      {
+        "tag": "a",
+        "text": "Anthropic",
+        "id": null,
+        "href": "/__log/anthropic",
+        "cls": "view-segment"
+      },
+      {
+        "tag": "button",
+        "text": "保存归档设置",
+        "id": "saveBtn",
+        "href": null,
+        "cls": ""
+      },
+      {
+        "tag": "button",
+        "text": "从文件重载",
+        "id": "reloadBtn",
+        "href": null,
+        "cls": "ghost"
+      },
+      {
+        "tag": "button",
+        "text": "自动刷新：开",
+        "id": "logAutoBtn",
+        "href": null,
+        "cls": "ghost"
+      },
+      {
+        "tag": "button",
+        "text": "立即刷新",
+        "id": "logRefreshBtn",
+        "href": null,
+        "cls": "ghost"
+      },
+      {
+        "tag": "button",
+        "text": "清理请求失败文档",
+        "id": "logCleanupFailedBtn",
+        "href": null,
+        "cls": "danger"
+      },
+      {
+        "tag": "button",
+        "text": "清理所有文档",
+        "id": "logCleanupAllBtn",
+        "href": null,
+        "cls": "danger"
+      }
+    ],
+    "inputs": [
+      {
+        "tag": "select",
+        "id": "archiveRequests",
+        "type": null,
+        "placeholder": null,
+        "value": "false"
+      },
+      {
+        "tag": "select",
+        "id": "logLimit",
+        "type": null,
+        "placeholder": null,
+        "value": "60"
+      }
+    ],
+    "texts": [
+      "AgentLens Console",
+      "AgentLens",
+      "侧边栏是进入各域的唯一主导航。",
+      "系统分区",
+      "4 个域",
+      "首页与导航",
+      "上游与路由",
+      "归档与详情",
+      "任务与运行",
+      "Home Home 入口与信息架构 进入",
+      "Home",
+      "入口与信息架构",
+      "进入",
+      "Router Router 上游与转发配置 进入",
+      "Router",
+      "上游与转发配置",
+      "Log Log 归档日志详情 当前页",
+      "Log",
+      "归档日志详情",
+      "当前页",
+      "Loop Loop Workflow 与运行 进入",
+      "Loop",
+      "Workflow 与运行",
+      "导航规则",
+      "/__admin 兼容入口保留。",
+      "当前视图：All / 只显示带完整 archived detail 的记录",
+      "AgentLens Logs (All)",
+      "按请求类型查看已归档的 request / response 配对，主视图坚持原生日志优先。",
+      "All",
+      "OpenAI",
+      "Anthropic",
+      "原生归档",
+      "请求与响应展示必须忠于原始内容。",
+      "展示分层",
+      "JSON 树与 SSE 聚合仅服务显示，不反写归档。",
+      "日志服务正常",
+      "已同步",
+      "保存归档设置",
+      "从文件重载",
+      "按请求类型归档、按归档状态查看，详情页始终以原生日志内容为主，SSE 仅做展示聚合。",
+      "All 请求 / 响应日志",
+      "实时更新中",
+      "原始请求/响应归档 关闭 开启",
+      "自动刷新：开",
+      "立即刷新",
+      "展示条数 30 60 100",
+      "清理请求失败文档",
+      "清理所有文档",
+      "原生请求优先",
+      "请求侧主视图聚焦 body.text。",
+      "JSON 树仅展示",
+      "递归解析仅用于可读展示，不写回归档。",
+      "SSE 展示聚合",
+      "只在响应显示层合并，不破坏原始存档。",
+      "Loop 负责工作流",
+      "log 只负责查看；workflow 的搭建与运行统一放在 loop。",
+      "已归档详情",
+      "其他类型",
+      "归档状态",
+      "当前关闭",
+      "requestId 对齐",
+      "归档列表不跨请求聚合，确保请求与响应一一对应。",
+      "只展示可查看记录",
+      "未归档详情不会作为可查看明细项出现。"
+    ],
+    "sections": [
+      {
+        "tag": "aside",
+        "cls": "workbench-sidebar",
+        "text": "AgentLens Console AgentLens 侧边栏是进入各域的唯一主导航。 系统分区 4 个域 frontend首页与导航 router上游与路由 log归档与详情 loop任务与运行 功能导航 Home Home 入口与信息架构 进入 Router Router 上游与转发配置 进入 Log Log 归档"
+      },
+      {
+        "tag": "div",
+        "cls": "workbench-sidebar-panel",
+        "text": "系统分区 4 个域 frontend首页与导航 router上游与路由 log归档与详情 loop任务与运行"
+      },
+      {
+        "tag": "div",
+        "cls": "workbench-panel-title",
+        "text": "系统分区 4 个域"
+      },
+      {
+        "tag": "div",
+        "cls": "workbench-sidebar-footer",
+        "text": "导航规则 /__admin 兼容入口保留。"
+      },
+      {
+        "tag": "div",
+        "cls": "page-shell",
+        "text": "Log 当前视图：All / 只显示带完整 archived detail 的记录 AgentLens Logs (All) 按请求类型查看已归档的 request / response 配对，主视图坚持原生日志优先。 日志范围 All OpenAI Anthropic 原生归档 请求与响应展示必须忠于原始内容。 展示"
+      },
+      {
+        "tag": "section",
+        "cls": "hero-slab",
+        "text": "Log 当前视图：All / 只显示带完整 archived detail 的记录 AgentLens Logs (All) 按请求类型查看已归档的 request / response 配对，主视图坚持原生日志优先。 日志范围 All OpenAI Anthropic 原生归档 请求与响应展示必须忠于原始内容。 展示"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-grid",
+        "text": "Log 当前视图：All / 只显示带完整 archived detail 的记录 AgentLens Logs (All) 按请求类型查看已归档的 request / response 配对，主视图坚持原生日志优先。 日志范围 All OpenAI Anthropic 原生归档 请求与响应展示必须忠于原始内容。 展示"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-copy",
+        "text": "Log 当前视图：All / 只显示带完整 archived detail 的记录 AgentLens Logs (All) 按请求类型查看已归档的 request / response 配对，主视图坚持原生日志优先。 日志范围 All OpenAI Anthropic 原生归档 请求与响应展示必须忠于原始内容。 展示"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-heading",
+        "text": "AgentLens Logs (All) 按请求类型查看已归档的 request / response 配对，主视图坚持原生日志优先。"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-principles",
+        "text": "原生归档 请求与响应展示必须忠于原始内容。 展示分层 JSON 树与 SSE 聚合仅服务显示，不反写归档。"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-principle",
+        "text": "原生归档 请求与响应展示必须忠于原始内容。"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-principle",
+        "text": "展示分层 JSON 树与 SSE 聚合仅服务显示，不反写归档。"
+      },
+      {
+        "tag": "aside",
+        "cls": "hero-side",
+        "text": "归档设置 控制后续请求是否保存原始详情；现有归档日志的查看规则不变。 日志服务正常 已同步 保存归档设置 从文件重载 归档设置已加载。当前原始归档已关闭：已存在的归档日志仍可查看，但新的请求只会记录摘要，不会新增可查看详情项。"
+      },
+      {
+        "tag": "div",
+        "cls": "status hero-card",
+        "text": "归档设置 控制后续请求是否保存原始详情；现有归档日志的查看规则不变。 日志服务正常 已同步 保存归档设置 从文件重载"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-status",
+        "text": "日志服务正常 已同步"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-actions",
+        "text": "保存归档设置 从文件重载"
+      },
+      {
+        "tag": "div",
+        "cls": "log-header-card card",
+        "text": "日志查看 按请求类型归档、按归档状态查看，详情页始终以原生日志内容为主，SSE 仅做展示聚合。 All 请求 / 响应日志 实时更新中"
+      },
+      {
+        "tag": "div",
+        "cls": "log-top-grid",
+        "text": "归档设置 原始请求/响应归档 关闭 开启 关闭后，新请求只保留摘要，不新增详情。只显示带归档详情的记录。 列表操作 自动刷新：开 立即刷新 展示条数 30 60 100 清理请求失败文档 清理所有文档 展示原则 原生请求优先请求侧主视图聚焦 body.text。 JSON 树仅展示递归解析仅用于可读展示，不写回归档。 "
+      },
+      {
+        "tag": "section",
+        "cls": "log-panel",
+        "text": "归档设置 原始请求/响应归档 关闭 开启 关闭后，新请求只保留摘要，不新增详情。只显示带归档详情的记录。"
+      },
+      {
+        "tag": "div",
+        "cls": "log-panel-head",
+        "text": "归档设置"
+      },
+      {
+        "tag": "div",
+        "cls": "log-panel-title",
+        "text": "归档设置"
+      },
+      {
+        "tag": "div",
+        "cls": "log-panel-copy",
+        "text": "关闭后，新请求只保留摘要，不新增详情。只显示带归档详情的记录。"
+      },
+      {
+        "tag": "section",
+        "cls": "log-panel",
+        "text": "列表操作 自动刷新：开 立即刷新 展示条数 30 60 100 清理请求失败文档 清理所有文档"
+      },
+      {
+        "tag": "div",
+        "cls": "log-panel-head",
+        "text": "列表操作"
+      },
+      {
+        "tag": "div",
+        "cls": "log-panel-title",
+        "text": "列表操作"
+      },
+      {
+        "tag": "div",
+        "cls": "log-actions-grid",
+        "text": "自动刷新：开 立即刷新 展示条数 30 60 100 清理请求失败文档 清理所有文档"
+      },
+      {
+        "tag": "section",
+        "cls": "log-panel",
+        "text": "展示原则 原生请求优先请求侧主视图聚焦 body.text。 JSON 树仅展示递归解析仅用于可读展示，不写回归档。 SSE 展示聚合只在响应显示层合并，不破坏原始存档。 Loop 负责工作流log 只负责查看；workflow 的搭建与运行统一放在 loop。"
+      },
+      {
+        "tag": "div",
+        "cls": "log-panel-head",
+        "text": "展示原则"
+      },
+      {
+        "tag": "div",
+        "cls": "log-panel-title",
+        "text": "展示原则"
+      },
+      {
+        "tag": "div",
+        "cls": "principle-list",
+        "text": "原生请求优先请求侧主视图聚焦 body.text。 JSON 树仅展示递归解析仅用于可读展示，不写回归档。 SSE 展示聚合只在响应显示层合并，不破坏原始存档。 Loop 负责工作流log 只负责查看；workflow 的搭建与运行统一放在 loop。"
+      },
+      {
+        "tag": "div",
+        "cls": "log-main-grid",
+        "text": "已归档日志列表 保留请求/响应一一对应关系，以 requestId 为中心查看。 总日志0成功0失败0处理中0平均耗时(ms)0解析错误0 OpenAI已归档详情0当前视图下 OpenAI 日志共 0 条。Anthropic已归档详情0当前视图下 Anthropic 日志共 0 条。其他类型已归档详情0当前视图下 其他"
+      },
+      {
+        "tag": "div",
+        "cls": "log-list-shell",
+        "text": "已归档日志列表 保留请求/响应一一对应关系，以 requestId 为中心查看。 总日志0成功0失败0处理中0平均耗时(ms)0解析错误0 OpenAI已归档详情0当前视图下 OpenAI 日志共 0 条。Anthropic已归档详情0当前视图下 Anthropic 日志共 0 条。其他类型已归档详情0当前视图下 其他"
+      },
+      {
+        "tag": "div",
+        "cls": "log-list-head",
+        "text": "已归档日志列表 保留请求/响应一一对应关系，以 requestId 为中心查看。"
+      },
+      {
+        "tag": "div",
+        "cls": "log-panel-title",
+        "text": "已归档日志列表"
+      },
+      {
+        "tag": "div",
+        "cls": "log-panel-copy",
+        "text": "保留请求/响应一一对应关系，以 requestId 为中心查看。"
+      },
+      {
+        "tag": "div",
+        "cls": "overview-grid",
+        "text": "总日志0成功0失败0处理中0平均耗时(ms)0解析错误0"
+      },
+      {
+        "tag": "div",
+        "cls": "metric-card",
+        "text": "总日志0"
+      },
+      {
+        "tag": "div",
+        "cls": "metric-card",
+        "text": "成功0"
+      },
+      {
+        "tag": "div",
+        "cls": "metric-card",
+        "text": "失败0"
+      },
+      {
+        "tag": "div",
+        "cls": "metric-card",
+        "text": "处理中0"
+      },
+      {
+        "tag": "div",
+        "cls": "metric-card",
+        "text": "平均耗时(ms)0"
+      },
+      {
+        "tag": "div",
+        "cls": "metric-card",
+        "text": "解析错误0"
+      },
+      {
+        "tag": "div",
+        "cls": "archive-buckets",
+        "text": "OpenAI已归档详情0当前视图下 OpenAI 日志共 0 条。Anthropic已归档详情0当前视图下 Anthropic 日志共 0 条。其他类型已归档详情0当前视图下 其他类型 日志共 0 条。归档状态当前关闭0当前可查看列表中的记录都带有详情，未归档详情的记录不会展示。"
+      },
+      {
+        "tag": "div",
+        "cls": "archive-bucket",
+        "text": "OpenAI已归档详情0当前视图下 OpenAI 日志共 0 条。"
+      },
+      {
+        "tag": "div",
+        "cls": "archive-bucket-head",
+        "text": "OpenAI已归档详情"
+      },
+      {
+        "tag": "div",
+        "cls": "archive-bucket-copy",
+        "text": "当前视图下 OpenAI 日志共 0 条。"
+      },
+      {
+        "tag": "div",
+        "cls": "archive-bucket",
+        "text": "Anthropic已归档详情0当前视图下 Anthropic 日志共 0 条。"
+      },
+      {
+        "tag": "div",
+        "cls": "archive-bucket-head",
+        "text": "Anthropic已归档详情"
+      },
+      {
+        "tag": "div",
+        "cls": "archive-bucket-copy",
+        "text": "当前视图下 Anthropic 日志共 0 条。"
+      },
+      {
+        "tag": "div",
+        "cls": "archive-bucket",
+        "text": "其他类型已归档详情0当前视图下 其他类型 日志共 0 条。"
+      },
+      {
+        "tag": "div",
+        "cls": "archive-bucket-head",
+        "text": "其他类型已归档详情"
+      },
+      {
+        "tag": "div",
+        "cls": "archive-bucket-copy",
+        "text": "当前视图下 其他类型 日志共 0 条。"
+      },
+      {
+        "tag": "div",
+        "cls": "archive-bucket",
+        "text": "归档状态当前关闭0当前可查看列表中的记录都带有详情，未归档详情的记录不会展示。"
+      },
+      {
+        "tag": "div",
+        "cls": "archive-bucket-head",
+        "text": "归档状态当前关闭"
+      },
+      {
+        "tag": "div",
+        "cls": "archive-bucket-copy",
+        "text": "当前可查看列表中的记录都带有详情，未归档详情的记录不会展示。"
+      },
+      {
+        "tag": "div",
+        "cls": "log-list",
+        "text": "当前没有可查看的日志详情。归档关闭时，新请求不会新增详情。"
+      },
+      {
+        "tag": "section",
+        "cls": "log-panel side-panel",
+        "text": "查看规则 requestId 对齐归档列表不跨请求聚合，确保请求与响应一一对应。 只展示可查看记录未归档详情不会作为可查看明细项出现。"
+      },
+      {
+        "tag": "div",
+        "cls": "log-panel-head",
+        "text": "查看规则"
+      },
+      {
+        "tag": "div",
+        "cls": "log-panel-title",
+        "text": "查看规则"
+      },
+      {
+        "tag": "div",
+        "cls": "principle-list compact",
+        "text": "requestId 对齐归档列表不跨请求聚合，确保请求与响应一一对应。 只展示可查看记录未归档详情不会作为可查看明细项出现。"
+      }
+    ],
+    "body": "AGENTLENS CONSOLE AgentLens 侧边栏是进入各域的唯一主导航。 系统分区 4 个域 frontend 首页与导航 router 上游与路由 log 归档与详情 loop 任务与运行 功能导航 HOME Home 入口与信息架构 进入 ROUTER Router 上游与转发配置 进入 LOG Log 归档日志详情 当前页 LOOP Loop Workflow 与运行 进入 导航规则 /__admin 兼容入口保留。 LOG 当前视图：ALL / 只显示带完整 ARCHIVED DETAIL 的记录 AgentLens Logs (All) 按请求类型查看已归档的 request / response 配对，主视图坚持原生日志优先。 日志范围 All OpenAI Anthropic 原生归档 请求与响应展示必须忠于原始内容。 展示分层 JSON 树与 SSE 聚合仅服务显示，不反写归档。 归档设置 控制后续请求是否保存原始详情；现有归档日志的查看规则不变。 日志服务正常 已同步 保存归档设置 从文件重载 归档设置已加载。当前原始归档已关闭：已存在的归档日志仍可查看，但新的请求只会记录摘要，不会新增可查看详情项。 日志查看 按请求类型归档、按归档状态查看，详情页始终以原生日志内容为主，SSE 仅做展示聚合。 All 请求 / 响应日志 实时更新中 归档设置 原始请求/响应归档 关闭 开启 关闭后，新请求只保留摘要，不新增详情。只显示带归档详情的记录。 列表操作 自动刷新：开 立即刷新 展示条数 30 60 100 清理请求失败文档 清理所有文档 展示原则 原生请求优先 请求侧主视图聚焦 body.text。 JSON 树仅展示 递归解析仅用于可读展示，不写回归档。 SSE 展示聚合 只在响应显示层合并，不破坏原始存档。 Loop 负责工作流 log 只负责查看；workflow 的搭建与运行统一放在 loop。 已归档日志列表 保留请求/响应一一对应关系，以 requestId 为中心查看。 总日志 0 成功 0 失败 0 处理中 0 平均耗时(ms) 0 解析错误 0 OpenAI 已归档详情 0 当前视图下 OpenAI 日志共 0 条。 Anthropic 已归档详情 0 当前视图下 Anthropic 日志共 0 条。 其他类型 已归档详情 0 当前视图下 其他类型 日志共 0 条。 归档状态 当前关闭 0 当前可查看列表中的记录都带有详情，未归档详情的记录不会展示。 当前没有可查看的日志详情。归档关闭时，新请求不会新增详情。 查看规则 requestId 对齐 归档列表不跨请求聚合，确保请求与响应一一对应。 只展示可查看记录 未归档详情不会作为可查看明细项出现。"
+  },
+  "loop": {
+    "title": "AgentLens Loop Scheduler",
+    "buttons": [
+      {
+        "tag": "a",
+        "text": "Home Home 入口与信息架构 进入",
+        "id": null,
+        "href": "/",
+        "cls": "workbench-link"
+      },
+      {
+        "tag": "a",
+        "text": "Router Router 上游与转发配置 进入",
+        "id": null,
+        "href": "/__router",
+        "cls": "workbench-link"
+      },
+      {
+        "tag": "a",
+        "text": "Log Log 归档日志详情 进入",
+        "id": null,
+        "href": "/__log",
+        "cls": "workbench-link"
+      },
+      {
+        "tag": "a",
+        "text": "Loop Loop Workflow 与运行 当前页",
+        "id": null,
+        "href": "/__loop",
+        "cls": "workbench-link active"
+      },
+      {
+        "tag": "button",
+        "text": "保存并发设置",
+        "id": "saveConcurrencyBtn",
+        "href": null,
+        "cls": "ghost"
+      },
+      {
+        "tag": "button",
+        "text": "创建任务",
+        "id": "createBtn",
+        "href": null,
+        "cls": ""
+      },
+      {
+        "tag": "button",
+        "text": "测试一次（不保存）",
+        "id": "testBtn",
+        "href": null,
+        "cls": "ghost"
+      },
+      {
+        "tag": "button",
+        "text": "刷新",
+        "id": "refreshBtn",
+        "href": null,
+        "cls": "ghost"
+      }
+    ],
+    "inputs": [
+      {
+        "tag": "input",
+        "id": "maxConcurrentRuns",
+        "type": "number",
+        "placeholder": null,
+        "value": "4"
+      },
+      {
+        "tag": "input",
+        "id": "name",
+        "type": null,
+        "placeholder": "例如：每小时代码巡检",
+        "value": ""
+      },
+      {
+        "tag": "input",
+        "id": "intervalSec",
+        "type": "number",
+        "placeholder": null,
+        "value": "300"
+      },
+      {
+        "tag": "select",
+        "id": "advancedMode",
+        "type": null,
+        "placeholder": null,
+        "value": "command"
+      },
+      {
+        "tag": "input",
+        "id": "cwd",
+        "type": null,
+        "placeholder": "例如：/path/project 或 /path/project/src/app.ts",
+        "value": ""
+      },
+      {
+        "tag": "input",
+        "id": "command",
+        "type": null,
+        "placeholder": "例如：my-cli run \"{prompt}\"",
+        "value": "codex exec \"{prompt}\""
+      },
+      {
+        "tag": "textarea",
+        "id": "prompt",
+        "type": null,
+        "placeholder": "输入任务 Prompt",
+        "value": ""
+      },
+      {
+        "tag": "input",
+        "id": "taskSearch",
+        "type": null,
+        "placeholder": "按名称搜索",
+        "value": ""
+      }
+    ],
+    "texts": [
+      "AgentLens Console",
+      "AgentLens",
+      "侧边栏是进入各域的唯一主导航。",
+      "系统分区",
+      "4 个域",
+      "首页与导航",
+      "上游与路由",
+      "归档与详情",
+      "任务与运行",
+      "Home Home 入口与信息架构 进入",
+      "Home",
+      "入口与信息架构",
+      "进入",
+      "Router Router 上游与转发配置 进入",
+      "Router",
+      "上游与转发配置",
+      "Log Log 归档日志详情 进入",
+      "Log",
+      "归档日志详情",
+      "Loop Loop Workflow 与运行 当前页",
+      "Loop",
+      "Workflow 与运行",
+      "当前页",
+      "导航规则",
+      "/__admin 兼容入口保留。",
+      "Workflow Builder",
+      "以 workflow 为主，单命令模式为兼容入口。先搭步骤流，再观察运行中、队列和历史。",
+      "Workflow / Queue / Runs / History",
+      "工作顺序",
+      "集中确认并发、排队和当前运行态，避免 workflow 调度失控。",
+      "并发执行与排队",
+      "最大并发",
+      "保存并发设置",
+      "Workflow",
+      "支持工作流的搭建",
+      "命令模式适合单轮执行，Workflow 模式适合多步骤串联与循环。",
+      "运行原则",
+      "先建模，再运行",
+      "任务配置、队列状态和运行历史分层展示，避免在一个长表单里混杂判断。",
+      "搭建任务与步骤流",
+      "开始前先做什么",
+      "优先用多步骤 workflow 组织执行过程；若只是单步命令，也可以切换到兼容模式。",
+      "任务名称",
+      "循环间隔(秒)最小 5 秒",
+      "循环间隔(秒)",
+      "执行模式",
+      "工作目录 / 文件路径（必填）",
+      "自定义命令（含 {prompt} 占位）{prompt} 会被替换",
+      "自定义命令（含 {prompt} 占位）",
+      "Prompt",
+      "展开预览",
+      "配置预览（实时）",
+      "创建任务",
+      "测试一次（不保存）",
+      "任务卡片负责浏览与调度入口，细节操作继续在弹层里展开。",
+      "任务列表",
+      "刷新",
+      "这里单独追踪运行中的任务过程，不和历史记录混在一起。",
+      "运行中执行过程",
+      "最近运行记录保持独立回顾区，方便回看 workflow 的实际执行结果。",
+      "最近运行记录"
+    ],
+    "sections": [
+      {
+        "tag": "aside",
+        "cls": "workbench-sidebar",
+        "text": "AgentLens Console AgentLens 侧边栏是进入各域的唯一主导航。 系统分区 4 个域 frontend首页与导航 router上游与路由 log归档与详情 loop任务与运行 功能导航 Home Home 入口与信息架构 进入 Router Router 上游与转发配置 进入 Log Log 归档"
+      },
+      {
+        "tag": "div",
+        "cls": "workbench-sidebar-panel",
+        "text": "系统分区 4 个域 frontend首页与导航 router上游与路由 log归档与详情 loop任务与运行"
+      },
+      {
+        "tag": "div",
+        "cls": "workbench-panel-title",
+        "text": "系统分区 4 个域"
+      },
+      {
+        "tag": "div",
+        "cls": "workbench-sidebar-footer",
+        "text": "导航规则 /__admin 兼容入口保留。"
+      },
+      {
+        "tag": "div",
+        "cls": "page-shell",
+        "text": "Loop Workflow Builder 以 workflow 为主，单命令模式为兼容入口。先搭步骤流，再观察运行中、队列和历史。 Workflow / Queue / Runs / History 工作顺序先搭建 workflow 或兼容命令任务，再查看运行状态、排队情况和历史记录。 运行概览 集中确认并发、排队和"
+      },
+      {
+        "tag": "section",
+        "cls": "card hero",
+        "text": "Loop Workflow Builder 以 workflow 为主，单命令模式为兼容入口。先搭步骤流，再观察运行中、队列和历史。 Workflow / Queue / Runs / History 工作顺序先搭建 workflow 或兼容命令任务，再查看运行状态、排队情况和历史记录。"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-grid",
+        "text": "Loop Workflow Builder 以 workflow 为主，单命令模式为兼容入口。先搭步骤流，再观察运行中、队列和历史。 Workflow / Queue / Runs / History 工作顺序先搭建 workflow 或兼容命令任务，再查看运行状态、排队情况和历史记录。"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-copy",
+        "text": "Loop Workflow Builder 以 workflow 为主，单命令模式为兼容入口。先搭步骤流，再观察运行中、队列和历史。 Workflow / Queue / Runs / History"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-meta",
+        "text": "Workflow / Queue / Runs / History"
+      },
+      {
+        "tag": "aside",
+        "cls": "hero-side",
+        "text": "工作顺序先搭建 workflow 或兼容命令任务，再查看运行状态、排队情况和历史记录。"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-side-card",
+        "text": "工作顺序先搭建 workflow 或兼容命令任务，再查看运行状态、排队情况和历史记录。"
+      },
+      {
+        "tag": "div",
+        "cls": "hero-side-copy",
+        "text": "先搭建 workflow 或兼容命令任务，再查看运行状态、排队情况和历史记录。"
+      },
+      {
+        "tag": "div",
+        "cls": "card",
+        "text": "运行概览 集中确认并发、排队和当前运行态，避免 workflow 调度失控。 并发执行与排队 最大并发 保存并发设置 运行中: 0 | 排队中: 0 | 最大并发: 4 当前没有排队任务。下一步：触发任务后，等待中的请求会显示在这里。"
+      },
+      {
+        "tag": "div",
+        "cls": "queue-list",
+        "text": "当前没有排队任务。下一步：触发任务后，等待中的请求会显示在这里。"
+      },
+      {
+        "tag": "div",
+        "cls": "stack-card",
+        "text": "Workflow 支持工作流的搭建 命令模式适合单轮执行，Workflow 模式适合多步骤串联与循环。 运行原则 先建模，再运行 任务配置、队列状态和运行历史分层展示，避免在一个长表单里混杂判断。"
+      },
+      {
+        "tag": "div",
+        "cls": "mini-card",
+        "text": "Workflow 支持工作流的搭建 命令模式适合单轮执行，Workflow 模式适合多步骤串联与循环。"
+      },
+      {
+        "tag": "div",
+        "cls": "mini-card",
+        "text": "运行原则 先建模，再运行 任务配置、队列状态和运行历史分层展示，避免在一个长表单里混杂判断。"
+      },
+      {
+        "tag": "section",
+        "cls": "composer-layout",
+        "text": "Workflow Builder 搭建任务与步骤流 开始前先做什么 优先用多步骤 workflow 组织执行过程；若只是单步命令，也可以切换到兼容模式。 任务名称 Runner custom codex claude_code openai anthropic 循环间隔(秒)最小 5 秒 执行模式 多步骤 Workfl"
+      },
+      {
+        "tag": "div",
+        "cls": "card composer-card",
+        "text": "Workflow Builder 搭建任务与步骤流 开始前先做什么 优先用多步骤 workflow 组织执行过程；若只是单步命令，也可以切换到兼容模式。 任务名称 Runner custom codex claude_code openai anthropic 循环间隔(秒)最小 5 秒 执行模式 多步骤 Workfl"
+      },
+      {
+        "tag": "div",
+        "cls": "help-panel",
+        "text": "开始前先做什么 优先用多步骤 workflow 组织执行过程；若只是单步命令，也可以切换到兼容模式。"
+      },
+      {
+        "tag": "div",
+        "cls": "grid",
+        "text": "任务名称 Runner custom codex claude_code openai anthropic 循环间隔(秒)最小 5 秒 执行模式 多步骤 Workflow 模式（推荐） 单命令兼容模式 单命令兼容模式：单步骤执行，默认预填 codex exec 命令模板（可编辑，含 {prompt}）。 工作目录 / "
+      },
+      {
+        "tag": "div",
+        "cls": "draft-panel",
+        "text": "配置预览（实时）"
+      },
+      {
+        "tag": "div",
+        "cls": "card",
+        "text": "任务列表 任务卡片负责浏览与调度入口，细节操作继续在弹层里展开。 任务列表 刷新 当前还没有任务。下一步：先在上方填写表单并创建第一个任务。"
+      },
+      {
+        "tag": "div",
+        "cls": "task-list",
+        "text": "当前还没有任务。下一步：先在上方填写表单并创建第一个任务。"
+      },
+      {
+        "tag": "div",
+        "cls": "card",
+        "text": "Live Runs 这里单独追踪运行中的任务过程，不和历史记录混在一起。 运行中执行过程 当前没有运行中的任务。下一步：可从任务列表手动运行已有任务。"
+      },
+      {
+        "tag": "div",
+        "cls": "run-list",
+        "text": "当前没有运行中的任务。下一步：可从任务列表手动运行已有任务。"
+      },
+      {
+        "tag": "div",
+        "cls": "card",
+        "text": "Run History 最近运行记录保持独立回顾区，方便回看 workflow 的实际执行结果。 最近运行记录 当前还没有运行记录。下一步：先执行一次任务，这里才会出现历史。"
+      },
+      {
+        "tag": "div",
+        "cls": "run-list",
+        "text": "当前还没有运行记录。下一步：先执行一次任务，这里才会出现历史。"
+      }
+    ],
+    "body": "AGENTLENS CONSOLE AgentLens 侧边栏是进入各域的唯一主导航。 系统分区 4 个域 frontend 首页与导航 router 上游与路由 log 归档与详情 loop 任务与运行 功能导航 HOME Home 入口与信息架构 进入 ROUTER Router 上游与转发配置 进入 LOG Log 归档日志详情 进入 LOOP Loop Workflow 与运行 当前页 导航规则 /__admin 兼容入口保留。 LOOP Workflow Builder 以 workflow 为主，单命令模式为兼容入口。先搭步骤流，再观察运行中、队列和历史。 Workflow / Queue / Runs / History 工作顺序 先搭建 workflow 或兼容命令任务，再查看运行状态、排队情况和历史记录。 运行概览 集中确认并发、排队和当前运行态，避免 workflow 调度失控。 并发执行与排队 最大并发 保存并发设置 运行中: 0 | 排队中: 0 | 最大并发: 4 当前没有排队任务。下一步：触发任务后，等待中的请求会显示在这里。 WORKFLOW 支持工作流的搭建 命令模式适合单轮执行，Workflow 模式适合多步骤串联与循环。 运行原则 先建模，再运行 任务配置、队列状态和运行历史分层展示，避免在一个长表单里混杂判断。 WORKFLOW BUILDER 搭建任务与步骤流 开始前先做什么 优先用多步骤 workflow 组织执行过程；若只是单步命令，也可以切换到兼容模式。 任务名称 循环间隔(秒) 最小 5 秒 执行模式 多步骤 Workflow 模式（推荐） 单命令兼容模式 单命令兼容模式：单步骤执行，默认预填 codex exec 命令模板（可编辑，含 {prompt}）。 工作目录 / 文件路径（必填） 目录或文件路径 自定义命令（含 {prompt} 占位） {prompt} 会被替换 Prompt 展开预览 创建任务 测试一次（不保存） 任务列表 任务卡片负责浏览与调度入口，细节操作继续在弹层里展开。 任务列表 刷新 当前还没有任务。下一步：先在上方填写表单并创建第一个任务。 LIVE RUNS 这里单独追踪运行中的任务过程，不和历史记录混在一起。 运行中执行过程 当前没有运行中的任务。下一步：可从任务列表手动运行已有任务。 RUN HISTORY 最近运行记录保持独立回顾区，方便回看 workflow 的实际执行结果。 最近运行记录 当前还没有运行记录。下一步：先执行一次任务，这里才会出现历史。"
+  }
+}

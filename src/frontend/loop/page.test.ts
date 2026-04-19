@@ -1,0 +1,30 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { renderLoopHtml } from "./page";
+
+test("renderLoopHtml keeps loop under the shared frontend navigation", () => {
+  const html = renderLoopHtml();
+  assert.match(html, /<title>AgentLens Loop Scheduler<\/title>/);
+  assert.match(html, /aria-label="功能侧边栏"/);
+  assert.match(html, /class="workbench-link active" href="\/__loop"/);
+  assert.match(html, /href="\/__loop"/);
+  assert.match(html, /Workflow \/ Loop/);
+  assert.match(html, /以 workflow 为主，单命令模式为兼容入口/);
+  assert.match(html, /开始前先做什么/);
+  assert.match(html, /展开预览/);
+  assert.match(html, /当前没有运行中的任务。下一步：可从任务列表手动运行已有任务。/);
+  assert.match(html, /当前还没有任务。下一步：先在上方填写表单并创建第一个任务。/);
+  assert.match(html, /当前还没有运行记录。下一步：先执行一次任务，这里才会出现历史。/);
+  assert.match(html, /当前没有排队任务。下一步：触发任务后，等待中的请求会显示在这里。/);
+  assert.match(html, /Workflow Builder/);
+  assert.match(html, /<span>Runner<\/span>/);
+  assert.match(html, /workflowSessionField/);
+  assert.match(html, /setHidden\(document\.getElementById\("workflowSessionField"\), !workflowUsesCodex\);/);
+  assert.doesNotMatch(html, /loop\.scheduler/);
+  assert.doesNotMatch(html, /Task Composer/);
+  assert.doesNotMatch(html, /Task Library/);
+  assert.doesNotMatch(html, /Run Activity/);
+  assert.doesNotMatch(html, /aria-label="页面入口"/);
+  assert.doesNotMatch(html, /创建入口/);
+  assert.doesNotMatch(html, /当前重点/);
+});

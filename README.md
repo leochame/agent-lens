@@ -2,12 +2,58 @@
 
 > [中文文档](./README-zh.md)
 
-AgentLens is a local transparent proxy for observing and debugging AI requests.
+AgentLens is a local AI gateway workbench for:
+- transparent request routing and forwarding
+- raw archive-backed request/response log inspection
+- loop/workflow task execution and monitoring
 
-It does three things:
-- Forwards requests to your configured upstream model services (OpenAI / Anthropic / compatible gateways)
-- Logs request / response (raw archives can be toggled in Admin)
-- Provides a local admin page for viewing logs and editing config
+It is no longer just a proxy. The current product is best understood as one local service with 4 workbench areas:
+- Home: information architecture and entry page only
+- Router: upstream/provider/routing configuration
+- Log: archived request/response viewer
+- Loop: workflow/task runtime workspace
+
+In other words: 3 core business modules (`Router`, `Log`, `Loop`) plus 1 entry module (`Home`).
+
+## Current Module Split
+
+### 1. Home
+- Path: `/`
+- Role: explain page boundaries and send the user to the correct workspace
+- Rule: no config editing, no log inspection, no task execution here
+
+### 2. Router
+- Path: `/__router`
+- Code: `src/router`, `src/frontend/router`
+- Role: manage listening, upstreams, provider detection, path rewrite, transparent forwarding
+- Scope:
+  - OpenAI / Anthropic format detection
+  - header-based and path-based routing
+  - provider-specific upstream URL and credentials
+  - third-party relay / compatible gateway forwarding
+
+### 3. Log
+- Path: `/__log`
+- Compatibility entry: `/__admin` redirects to `/__log`
+- Code: `src/log`, `src/frontend/log`, part of `src/frontend/admin`
+- Role: inspect archived request/response pairs for humans
+- Product rules:
+  - request and response stay paired one-to-one by `requestId`
+  - request-side primary view focuses on archived `body.text`
+  - if `body.text` is JSON or JSON-encoded text, parse recursively for display only
+  - SSE responses may be aggregated for display only
+  - display logic must not rewrite archived raw payloads
+  - only records with archived detail should appear as viewable items
+
+### 4. Loop
+- Path: `/__loop`
+- Code: `src/loop`, `src/frontend/loop`
+- Role: build workflows, run tasks, manage queue, inspect live state and history
+- Scope:
+  - recurring tasks
+  - run now / pause / resume / stop
+  - queue and live-run state
+  - workflow-first task organization with single-command compatibility
 
 ## Quick Start
 
@@ -19,75 +65,30 @@ npm run build
 npm start
 ```
 
-Default listener: `http://127.0.0.1:5290`
+Default address: `http://127.0.0.1:5290`
 
-Point your client's Base URL to AgentLens, for example:
+## Main Pages
 
-```bash
-export ANTHROPIC_BASE_URL=http://127.0.0.1:5290
-```
+- Home: `http://127.0.0.1:5290/`
+- Router: `http://127.0.0.1:5290/__router`
+- Log: `http://127.0.0.1:5290/__log`
+- Loop: `http://127.0.0.1:5290/__loop`
 
-## Admin UI (Recommended)
+## Runtime / Code Layout
 
-After starting, open: `http://127.0.0.1:5290/__admin`
+- Entry: `src/index.ts`
+- HTTP server and route mounting: `src/router/proxy/server.ts`
+- Router backend: `src/router`
+- Log archive and logger: `src/log`
+- Loop scheduler/runtime: `src/loop`
+- Frontend pages: `src/frontend`
 
-Configure everything from the page:
-- Add/edit Providers (`baseURL`, `hostHeader`, auth mode)
-- Set the default routing Provider
-- Changes take effect immediately on save
+## Config and Data
 
-No need to manually edit config files — saving from the UI writes to local config directly.
-
-## Scheduled Loop (New)
-
-After startup, open: `http://127.0.0.1:5290/__loop`
-
-This is a standalone feature and does not change existing proxy behavior. It supports:
-- Creating recurring loop tasks (interval, working directory or file path)
-- Runner (currently fixed to `Custom` in the frontend; you can still call local `codex` / `claude` CLIs via command)
-- Run now, enable/disable, delete
-- Test-run before saving
-- Path check (directory/file); file path automatically runs from its parent directory
-- Codex template library (one-click common task presets)
-- Last successful test configuration is written to browser local storage (currently saved only, not auto-restored)
-- Task edit mode and clone-to-form for quick creation
-- Task list search filter (by name)
-- Multi-task parallel execution (configurable global max concurrency with queueing)
-- Single-task multi-stage workflow (step-by-step orchestration)
-- Workflow shared session (enabled by default; reuses one Codex session across steps/rounds of the same task)
-- Codex access mode switch (standard / Full Access)
-- Per-step runner/command override (via visual workflow editor)
-- Per-step cwd/file-path override from frontend visual editor (directory runs directly; file runs from parent directory)
-- Per-step failure policy override (continue/stop, via visual workflow editor)
-- Visual workflow step editor (add/remove/reorder/enable)
-- Visual editor supports advanced-field toggle (simple/full mode)
-- Built-in step template library (dev/review/summary/test) with one-click insert
-- Viewing recent run logs (stdout/stderr/status)
-
-Notes:
-- Tasks execute local shell commands (for example `claude -p "{prompt}"`, `codex exec "{prompt}"`)
-- Loop tasks have no built-in timeout; they end on command failure, manual stop, or upstream/proxy errors
-- Because timeout is not enforced, a single long-running/hung step can keep occupying one concurrency slot
-- `workflowLoopFromStart=true` is infinite-loop semantics: after each successful round it starts the next round automatically, and will not auto-close by itself
-- Full Access bypasses sandbox/approvals; enable only in trusted environments
-- CLI arguments vary by local version; adjust with custom command if needed
-- Task config is persisted at `config/loop-tasks.json`
-
-## Auth Rules (inject mode)
-
-When a Provider uses `inject`:
-- If the local env var (specified by Env Key) has a value: inject it into the designated Header
-- If the local env var is empty: pass through the downstream client's Header as-is
-
-In short: **local env takes priority; falls back to passthrough**.
-
-## Logging
-
-- View request list and JSON details from the admin page
-- `request` displays the raw `body.text` from the request
-- `response` shows the merged result after display-layer substitution (original data unchanged)
-- Raw request/response archives are saved to local logs only when `archiveRequests` is enabled
+- Main config: `config/default.yaml`
+- Loop tasks: `config/loop-tasks.json`
+- Logs and archives: `logs/`
 
 ## Local Use Only
 
-The admin page has no authentication by default. Use only in local environments.
+Admin/log pages are unauthenticated by default. Use in local environments only.

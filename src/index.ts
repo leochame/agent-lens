@@ -1,10 +1,24 @@
-import { loadConfig, resolveConfigPath } from "./config-manager/config";
-import { startServer } from "./proxy-engine/server";
+import { loadConfig, resolveConfigPath } from "./router/config/config";
+import { startServer } from "./router/proxy/server";
 
-function main(): void {
+function describeStartupError(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+  const code = "code" in error ? String((error as NodeJS.ErrnoException).code || "") : "";
+  if (code === "EADDRINUSE") {
+    return `${error.message}. Try changing listen.port in config/default.yaml, or start with AGENTLENS_PORT=5291 npm start.`;
+  }
+  if (code === "EACCES" || code === "EPERM") {
+    return `${error.message}. Check host/port permissions and whether your environment allows binding that address.`;
+  }
+  return error.message;
+}
+
+async function main(): Promise<void> {
   const configPath = resolveConfigPath();
   const config = loadConfig();
-  const runtime = startServer(config, configPath);
+  const runtime = await startServer(config, configPath);
   let shuttingDown = false;
 
   const shutdown = (signal: NodeJS.Signals): void => {
@@ -23,4 +37,7 @@ function main(): void {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 }
 
-main();
+void main().catch((error) => {
+  console.error(`[agent-lens] startup failed: ${describeStartupError(error)}`);
+  process.exit(1);
+});

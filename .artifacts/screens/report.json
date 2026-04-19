@@ -1,0 +1,34 @@
+[
+  {
+    "name": "home",
+    "url": "http://127.0.0.1:5291/",
+    "status": 200,
+    "title": "AgentLens Home",
+    "errors": [],
+    "bodyPreview": "AGENTLENS CONSOLE\nAgentLens\n侧边栏是进入各域的唯一主导航。\n系统分区\n4 个域\nfrontend\n首页与导航\nrouter\n上游与路由\nlog\n归档与详情\nloop\n任务与运行\n功能导航\nHOME\nHome\n入口与信息架构\n当前页\nROUTER\nRouter\n上游与转发配置\n进入\nLOG\nLog\n归档日志详情\n进入\nLOOP\nLoop\nWorkflow 与运行\n进入\n导航规则\n/__admin 兼容入口保留。\nHOME\n\nAGENTLENS FRONT DOOR\n\n一块只负责分流与定向的黑灰工作台。\n\n首页不承担配置写入、日志查看或任务执行。它只负责解释四个域的边界，并把你送进正确的工作区。\n\n只做入口，不做操作\nrouter / log / loop 明确分域\n统一导航，统一黑灰材质\n当前规则\n\n如果你要改上游，去 router；如果你要看 archive，去 log；如果你要搭 workflow，去 loop。\n\n入口原则\n\n首页只保留跳转能力，不承载配置表单、日志列表或任务执行按钮。\n\nROUTER\n进入\n转发与上游工作区\n\n继续保留透明转发能力。这里"
+  },
+  {
+    "name": "router",
+    "url": "http://127.0.0.1:5291/__router",
+    "status": 200,
+    "title": "AgentLens Router",
+    "errors": [],
+    "bodyPreview": "AGENTLENS CONSOLE\nAgentLens\n侧边栏是进入各域的唯一主导航。\n系统分区\n4 个域\nfrontend\n首页与导航\nrouter\n上游与路由\nlog\n归档与详情\nloop\n任务与运行\n功能导航\nHOME\nHome\n入口与信息架构\n进入\nROUTER\nRouter\n上游与转发配置\n当前页\nLOG\nLog\n归档日志详情\n进入\nLOOP\nLoop\nWorkflow 与运行\n进入\n导航规则\n/__admin 兼容入口保留。\nROUTER\n\n当前查看：路由配置 / 上游配置 / 默认路由 / 透明转发\n\nAgentLens Router\n\n继续保留透明转发能力，只重构配置界面的信息组织与工作台体验。\n\n透明代理\n只整理配置界面，不改变转发语义。\n分域控制\n路由配置独立于日志与 loop 工作流。\n配置状态\n保存后立即生效，不改变已有路由与转发语义。\n配置已加载\n已同步\n保存配置\n从文件重载\n配置已加载。修改并保存后会立即生效。\n监听与分流\n\nrouter 继续保留透明转发能力，只重构前端结构，不改后端行为。\n\n全局设置\n监听地址\n监听端口\n默认上游\nopenai\nanthr"
+  },
+  {
+    "name": "log",
+    "url": "http://127.0.0.1:5291/__log",
+    "status": 200,
+    "title": "AgentLens Logs (All)",
+    "errors": [],
+    "bodyPreview": "AGENTLENS CONSOLE\nAgentLens\n侧边栏是进入各域的唯一主导航。\n系统分区\n4 个域\nfrontend\n首页与导航\nrouter\n上游与路由\nlog\n归档与详情\nloop\n任务与运行\n功能导航\nHOME\nHome\n入口与信息架构\n进入\nROUTER\nRouter\n上游与转发配置\n进入\nLOG\nLog\n归档日志详情\n当前页\nLOOP\nLoop\nWorkflow 与运行\n进入\n导航规则\n/__admin 兼容入口保留。\nLOG\n\n当前视图：ALL / 只显示带完整 ARCHIVED DETAIL 的记录\n\nAgentLens Logs (All)\n\n按请求类型查看已归档的 request / response 配对，主视图坚持原生日志优先。\n\n日志范围\nAll\nOpenAI\nAnthropic\n原生归档\n请求与响应展示必须忠于原始内容。\n展示分层\nJSON 树与 SSE 聚合仅服务显示，不反写归档。\n归档设置\n控制后续请求是否保存原始详情；现有归档日志的查看规则不变。\n日志服务正常\n已同步\n保存归档设置\n从文件重载\n归档设置已加载。当前原始归档已关闭：已存在的归档日志"
+  },
+  {
+    "name": "loop",
+    "url": "http://127.0.0.1:5291/__loop",
+    "status": 200,
+    "title": "AgentLens Loop Scheduler",
+    "errors": [],
+    "bodyPreview": "AGENTLENS CONSOLE\nAgentLens\n侧边栏是进入各域的唯一主导航。\n系统分区\n4 个域\nfrontend\n首页与导航\nrouter\n上游与路由\nlog\n归档与详情\nloop\n任务与运行\n功能导航\nHOME\nHome\n入口与信息架构\n进入\nROUTER\nRouter\n上游与转发配置\n进入\nLOG\nLog\n归档日志详情\n进入\nLOOP\nLoop\nWorkflow 与运行\n当前页\n导航规则\n/__admin 兼容入口保留。\nLOOP\nWorkflow Builder\n\n以 workflow 为主，单命令模式为兼容入口。先搭步骤流，再观察运行中、队列和历史。\n\nWorkflow / Queue / Runs / History\n工作顺序\n先搭建 workflow 或兼容命令任务，再查看运行状态、排队情况和历史记录。\n运行概览\n\n集中确认并发、排队和当前运行态，避免 workflow 调度失控。\n\n并发执行与排队\n最大并发\n保存并发设置\n运行中: 0 | 排队中: 0 | 最大并发: 4\n当前没有排队任务。下一步：触发任务后，等待中的请求会显示在这里。\nWORKFLOW\n支持"
+  }
+]

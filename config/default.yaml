@@ -2,29 +2,28 @@ listen:
   host: 127.0.0.1
   port: 5290
 routing:
-  defaultProvider: 中转站
+  defaultProvider: openai
   byHeader: x-target-provider
   byPathPrefix: {}
   autoDetectProviderByFormat: true
   formatProviders:
-    anthropic: 中转站
-    openai: provider_2
+    anthropic: anthropic
+    openai: openai
 providers:
-  中转站:
-    baseURL: https://ruoli.dev/v1
-    hostHeader: ruoli.dev
-    authMode:
-      type: inject
-      header: x-api-key
-      value: sk-K37VK2NWCTPCUMut6JemgfVj4XKITJ74WmvJ4n4knWGz6EtC
-    pathRewrite: []
-  provider_2:
-    baseURL: https://f.sillydream.top/v1
+  openai:
+    baseURL: https://openai-relay.example.com/v1
     authMode:
       type: inject
       header: authorization
-      value: sk-Fn3MgyltqyK5GS4sX0eoGIVP3LxUXi8GHizS2OfCiFAKY9Gw
+      value: ${OPENAI_API_KEY:-}
       valuePrefix: "Bearer "
+    pathRewrite: []
+  anthropic:
+    baseURL: https://anthropic-relay.example.com
+    authMode:
+      type: inject
+      header: x-api-key
+      value: ${ANTHROPIC_API_KEY:-}
     pathRewrite: []
 logging:
   filePath: ./logs/requests.jsonl

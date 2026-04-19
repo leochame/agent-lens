@@ -1,0 +1,30 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { renderHomeHtml } from "./page";
+
+test("renderHomeHtml links to router log and loop pages", () => {
+  const html = renderHomeHtml();
+  assert.match(html, /href="\/__router"/);
+  assert.match(html, /href="\/__log"/);
+  assert.match(html, /href="\/__loop"/);
+  assert.match(html, /class="workbench-link active" href="\/"/);
+  assert.match(html, /aria-label="功能侧边栏"/);
+  assert.match(html, /aria-label="首页路径"/);
+  assert.match(html, /AgentLens/);
+  assert.match(html, /\.workbench\s*\{/);
+  assert.match(html, /class="workbench-sidebar"/);
+  assert.match(html, /让每一次/);
+  assert.match(html, /请求被看见/);
+  assert.match(html, /少一点解释，多一点感知。/);
+  assert.match(html, /校准入口与上游/);
+  assert.match(html, /把原始请求摊开/);
+  assert.match(html, /让流程继续生长/);
+  const compact = html.replace(/\s+/g, " ");
+  assert.match(compact, /Home<\/strong>.*Router<\/h2>.*Log<\/h2>.*Loop<\/h2>/);
+  assert.doesNotMatch(compact, /Navigation<\/strong>/);
+  assert.doesNotMatch(compact, /<code>frontend<\/code>/);
+  assert.doesNotMatch(compact, /配置已加载/);
+  assert.doesNotMatch(compact, /id="logList"/);
+  assert.doesNotMatch(compact, />Open</);
+  assert.doesNotMatch(compact, /upstream \/ provider \/ route/);
+});
