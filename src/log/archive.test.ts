@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { archiveRecordFilePath } from "./service/archive-path";
+import { archiveRecordFilePath, legacyArchiveByRequestFilePath } from "./service/archive-path";
 import { cleanupArchivedLogs, loadArchivedLogDetail, loadPairedLogs } from "./archive";
 
 test("loadArchivedLogDetail returns nulls when archive is missing even if jsonl summary exists", async () => {
@@ -51,6 +51,25 @@ test("loadArchivedLogDetail returns nulls when neither archive nor jsonl exists"
   try {
     const logPath = join(dir, "requests.jsonl");
     const detail = await loadArchivedLogDetail(logPath, "missing-id", "openai", null);
+    assert.equal(detail.request, null);
+    assert.equal(detail.response, null);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("loadArchivedLogDetail ignores legacy archive paths for admin detail reads", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-admin-logs-test-"));
+  try {
+    const logPath = join(dir, "requests.jsonl");
+    const requestId = "req-legacy-detail-only";
+    const legacyRequestPath = legacyArchiveByRequestFilePath(logPath, requestId, "request");
+    const legacyResponsePath = legacyArchiveByRequestFilePath(logPath, requestId, "response");
+    await mkdir(dirname(legacyRequestPath), { recursive: true });
+    await writeFile(legacyRequestPath, JSON.stringify({ requestId, type: "request", body: { encoding: "utf8", text: "{\"prompt\":\"hello\"}" } }), "utf8");
+    await writeFile(legacyResponsePath, JSON.stringify({ requestId, type: "response", body: { encoding: "utf8", text: "{\"output\":\"world\"}" } }), "utf8");
+
+    const detail = await loadArchivedLogDetail(logPath, requestId, "openai", null);
     assert.equal(detail.request, null);
     assert.equal(detail.response, null);
   } finally {
@@ -196,6 +215,45 @@ test("loadPairedLogs excludes requestIds when only one archived detail half exis
 
     const items = await loadPairedLogs(logPath, 20, "openai");
     assert.deepEqual(items.map((item) => item.requestId), [fullyArchivedId]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("loadPairedLogs ignores legacy archived pairs when the new archive layout is missing", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-admin-logs-test-"));
+  try {
+    const logPath = join(dir, "requests.jsonl");
+    const requestId = "req-legacy-list-only";
+    const lines = [
+      JSON.stringify({
+        type: "request",
+        ts: "2026-03-26T03:15:40.439Z",
+        requestId,
+        apiFormat: "openai",
+        method: "POST",
+        path: "/responses"
+      }),
+      JSON.stringify({
+        type: "response",
+        ts: "2026-03-26T03:15:41.439Z",
+        requestId,
+        apiFormat: "openai",
+        method: "POST",
+        path: "/responses",
+        statusCode: 200
+      })
+    ];
+    await writeFile(join(dir, "requests.openai.jsonl"), `${lines.join("\n")}\n`, "utf8");
+
+    const legacyRequestPath = legacyArchiveByRequestFilePath(logPath, requestId, "request");
+    const legacyResponsePath = legacyArchiveByRequestFilePath(logPath, requestId, "response");
+    await mkdir(dirname(legacyRequestPath), { recursive: true });
+    await writeFile(legacyRequestPath, JSON.stringify({ requestId, type: "request", body: { encoding: "utf8", text: "{}" } }), "utf8");
+    await writeFile(legacyResponsePath, JSON.stringify({ requestId, type: "response", body: { encoding: "utf8", text: "{}" } }), "utf8");
+
+    const items = await loadPairedLogs(logPath, 20, "openai");
+    assert.deepEqual(items, []);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

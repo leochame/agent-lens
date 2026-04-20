@@ -161,17 +161,25 @@ function archiveCandidatePaths(
   logPath: string,
   requestId: string,
   type: "request" | "response",
-  apiFormat: ApiFormat | "all",
+  apiFormat: ApiFormat | "all"
+): string[] {
+  if (apiFormat !== "all") {
+    return [archiveRecordFilePath(logPath, null, requestId, type, apiFormat)];
+  }
+  return [
+    archiveRecordFilePath(logPath, null, requestId, type, "openai"),
+    archiveRecordFilePath(logPath, null, requestId, type, "anthropic"),
+    archiveRecordFilePath(logPath, null, requestId, type, "unknown")
+  ];
+}
+
+function legacyArchiveCandidatePaths(
+  logPath: string,
+  requestId: string,
+  type: "request" | "response",
   sessionId?: string | null
 ): string[] {
   const paths: string[] = [];
-  if (apiFormat !== "all") {
-    paths.push(archiveRecordFilePath(logPath, null, requestId, type, apiFormat));
-  } else {
-    paths.push(archiveRecordFilePath(logPath, null, requestId, type, "openai"));
-    paths.push(archiveRecordFilePath(logPath, null, requestId, type, "anthropic"));
-    paths.push(archiveRecordFilePath(logPath, null, requestId, type, "unknown"));
-  }
   paths.push(legacyArchiveByRequestFilePath(logPath, requestId, type));
   if (sessionId) {
     paths.push(legacyArchiveRecordFilePath(logPath, sessionId, requestId, type));
@@ -184,10 +192,9 @@ async function archiveFileExists(
   logPath: string,
   requestId: string,
   type: "request" | "response",
-  apiFormat: ApiFormat | "all",
-  sessionId?: string | null
+  apiFormat: ApiFormat | "all"
 ): Promise<boolean> {
-  for (const p of archiveCandidatePaths(logPath, requestId, type, apiFormat, sessionId)) {
+  for (const p of archiveCandidatePaths(logPath, requestId, type, apiFormat)) {
     try {
       await access(p);
       return true;
@@ -201,12 +208,11 @@ async function archiveFileExists(
 async function hasArchivedDetailPair(
   logPath: string,
   requestId: string,
-  apiFormat: ApiFormat | "all",
-  sessionId?: string | null
+  apiFormat: ApiFormat | "all"
 ): Promise<boolean> {
   const [hasRequest, hasResponse] = await Promise.all([
-    archiveFileExists(logPath, requestId, "request", apiFormat, sessionId),
-    archiveFileExists(logPath, requestId, "response", apiFormat, sessionId)
+    archiveFileExists(logPath, requestId, "request", apiFormat),
+    archiveFileExists(logPath, requestId, "response", apiFormat)
   ]);
   return hasRequest && hasResponse;
 }
@@ -447,8 +453,7 @@ export async function loadPairedLogs(logPath: string, limit = 80, apiFormat: Api
         archived: await hasArchivedDetailPair(
           logPath,
           item.requestId,
-          apiFormat === "all" ? ((item.apiFormat as ApiFormat | null) ?? "all") : apiFormat,
-          item.sessionId
+          apiFormat === "all" ? ((item.apiFormat as ApiFormat | null) ?? "all") : apiFormat
         )
       }))
     )
@@ -598,16 +603,26 @@ export async function cleanupArchivedLogs(
       await rm(requestArchiveDir, { recursive: true, force: true });
     }
 
-    const legacyDir = dirname(legacyArchiveByRequestFilePath(logPath, requestId, "request"));
-    await rm(legacyDir, { recursive: true, force: true });
-
-    const sessions = sessionsByRequest.get(requestId) ?? new Set<string | null>();
-    sessions.add(null);
-    for (const sessionId of sessions) {
-      const requestPath = legacyArchiveRecordFilePath(logPath, sessionId, requestId, "request");
-      const responsePath = legacyArchiveRecordFilePath(logPath, sessionId, requestId, "response");
-      await rm(requestPath, { force: true });
-      await rm(responsePath, { force: true });
+    for (const type of ["request", "response"] as const) {
+      for (const p of legacyArchiveCandidatePaths(
+        logPath,
+        requestId,
+        type,
+        null
+      )) {
+        await rm(p, { force: true });
+      }
+      const sessions = sessionsByRequest.get(requestId) ?? new Set<string | null>();
+      for (const sessionId of sessions) {
+        for (const p of legacyArchiveCandidatePaths(
+          logPath,
+          requestId,
+          type,
+          sessionId
+        )) {
+          await rm(p, { force: true });
+        }
+      }
     }
   }
 
@@ -636,7 +651,7 @@ export async function loadArchivedLogDetail(
       }
     };
 
-    for (const p of archiveCandidatePaths(logPath, requestId, type, apiFormat, sessionId)) {
+    for (const p of archiveCandidatePaths(logPath, requestId, type, apiFormat)) {
       const hit = await tryRead(p);
       if (hit) {
         return hit;
