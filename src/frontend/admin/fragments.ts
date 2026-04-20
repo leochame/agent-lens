@@ -4,7 +4,6 @@ import { LogPageModel, RouterPageModel } from "../shared/page-models";
 type ConsolePageContext = RouterPageModel | LogPageModel;
 
 function renderHeader(ctx: ConsolePageContext): string {
-  const isRouter = ctx.kind === "router";
   return `<div class="workbench-rail">
       <span class="workbench-rail-label">${ctx.pageSectionLabel}</span>
       <span class="workbench-rail-value">${ctx.pageContext}</span>
@@ -14,27 +13,12 @@ function renderHeader(ctx: ConsolePageContext): string {
         <span class="eyebrow">${ctx.pageEyebrow}</span>
         <div class="hero-heading">
           <h1>${ctx.pageTitle}</h1>
-          <p class="hero-description">${ctx.pageDescription}</p>
-        </div>
-        <div class="hero-principles">
-          <div class="hero-principle">
-            <strong>${isRouter ? "透明代理" : "原生归档"}</strong>
-            <span>${isRouter ? "只重构配置工作台结构，不改变转发语义。" : "请求与响应展示必须忠于原始内容。"}</span>
-          </div>
-          <div class="hero-principle">
-            <strong>${isRouter ? "Settings Layout" : "Viewer Layout"}</strong>
-            <span>${isRouter ? "General、Routing、Providers 拆成独立面板，便于逐项校对。" : "日志范围通过侧栏切换，详情仍只做展示层增强。"}</span>
-          </div>
         </div>
       </div>
       <aside class="console-hero-side">
         <div class="status hero-card">
-          <div class="status-copy">
-            <div class="status-title">${ctx.statusTitle}</div>
-            <div class="status-desc">${ctx.statusDescription}</div>
-          </div>
           <div class="hero-status">
-            <span id="runtimeBadge" class="badge dot">${isRouter ? "配置已加载" : "日志服务正常"}</span>
+            <span id="runtimeBadge" class="badge dot">${ctx.kind === "router" ? "已加载" : "在线"}</span>
             <span id="dirtyBadge" class="badge dot">已同步</span>
           </div>
           <div class="hero-actions">
@@ -54,9 +38,8 @@ function renderRouterSection(): string {
         <div class="panel-header">
           <div>
             <div class="section-kicker">General</div>
-            <h2>全局设置</h2>
+            <h2>全局</h2>
           </div>
-          <p class="section-note">监听、默认上游与超时策略集中维护，避免把基础项散落到多个区块。</p>
         </div>
         <div class="grid router-grid-tight">
           <label class="field">监听地址<input id="listenHost" placeholder="127.0.0.1" /></label>
@@ -70,54 +53,37 @@ function renderRouterSection(): string {
         <div class="panel-header">
           <div>
             <div class="section-kicker">Routing</div>
-            <h2>路由与分流</h2>
+            <h2>路由</h2>
           </div>
-          <p class="section-note">Router 继续保留透明转发能力，只整理配置界面的信息结构。</p>
         </div>
         <div class="grid router-grid-tight">
-          <label class="field">路由请求头<input id="routeHeader" placeholder="x-target-provider" /></label>
-          <label class="field">自动识别格式
-            <select id="autoDetect">
-              <option value="true">开启</option>
-              <option value="false">关闭</option>
-            </select>
-          </label>
-          <label class="field">Anthropic 默认上游<select id="anthropicProvider"></select></label>
-          <label class="field">OpenAI 默认上游<select id="openaiProvider"></select></label>
+          <div class="field wide">
+            <div class="section-kicker">Path Rules</div>
+            <div class="muted">按入口路径区分 OpenAI / Claude，请求体与剩余路径保持原样转发。</div>
+          </div>
         </div>
+        <div class="panel-header panel-header-split">
+          <div>
+            <div class="section-kicker">Rules</div>
+            <h2>路径规则</h2>
+          </div>
+          <button class="ghost" id="addRoute">添加规则</button>
+        </div>
+        <div class="provider-list" id="routesList"></div>
       </article>
 
       <article class="card workspace-panel">
         <div class="panel-header panel-header-split">
           <div>
             <div class="section-kicker">Providers</div>
-            <h2>上游列表</h2>
+            <h2>上游</h2>
           </div>
           <button class="ghost" id="addProvider">添加上游</button>
         </div>
-        <p class="section-note">所有 provider 都仍然按当前配置格式保存与转发。</p>
         <div class="provider-list" id="providersList"></div>
         <div id="validationErrors" class="error-box"></div>
       </article>
     </div>
-
-    <aside class="router-aside">
-      <article class="mini-card">
-        <span class="mini-kicker">治理原则</span>
-        <strong>保留转发</strong>
-        <p>配置只决定请求去向，不改变请求内容与转发透明度。</p>
-      </article>
-      <article class="mini-card">
-        <span class="mini-kicker">配置检查</span>
-        <strong>减少误配</strong>
-        <p>监听、默认上游与 provider 选择拆到明确分区里，更接近 IDE 设置页。</p>
-      </article>
-      <article class="mini-card mini-card-accent">
-        <span class="mini-kicker">工作流提示</span>
-        <strong>先默认，后分流</strong>
-        <p>先把默认上游和监听地址校准，再补路径前缀和格式识别，排错更快。</p>
-      </article>
-    </aside>
   </section>`;
 }
 
@@ -127,12 +93,11 @@ function renderLogSection(modeTitle: string): string {
         <article class="card workspace-panel">
           <div class="panel-header panel-header-split">
             <div>
-              <div class="section-kicker">Viewer</div>
-              <h2>${modeTitle} 请求 / 响应日志</h2>
-            </div>
-            <span id="logState" class="badge warn dot">连接中</span>
+            <div class="section-kicker">Viewer</div>
+            <h2>${modeTitle} 请求 / 响应日志</h2>
           </div>
-          <p class="section-note">按请求类型归档、按归档状态查看，详情页始终以原生日志内容为主，SSE 仅做展示聚合。</p>
+          <span id="logState" class="badge warn dot">连接中</span>
+        </div>
         </article>
         <article class="card workspace-panel">
           <div class="panel-header">
@@ -147,7 +112,6 @@ function renderLogSection(modeTitle: string): string {
               <option value="true">开启</option>
             </select>
           </label>
-          <div class="log-panel-copy">关闭后，新请求只保留摘要，不新增详情。只显示带归档详情的记录。</div>
         </article>
         <article class="card workspace-panel">
           <div class="panel-header">
@@ -186,7 +150,6 @@ function renderLogSection(modeTitle: string): string {
           <div class="log-list-head">
             <div>
               <div class="log-panel-title">已归档日志列表</div>
-              <div class="log-panel-copy">只显示带归档详情的记录；请求保持原生聚焦，响应仅在展示层做 JSON/SSE 阅读增强。</div>
             </div>
           </div>
           <div id="logOverview" class="overview-grid"></div>
@@ -203,7 +166,6 @@ function renderJsonModal(): string {
       <div class="modal-head">
         <div>
           <strong>日志详情</strong>
-          <div class="modal-subtitle">请求保持原生聚焦，响应支持 SSE 聚合展示与 JSON 树查看。</div>
         </div>
         <div class="actions modal-actions-primary">
           <button class="ghost" id="toggleJsonBtn">收起</button>

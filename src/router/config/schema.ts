@@ -34,6 +34,17 @@ export function validateConfig(input: AppConfig): AppConfig {
   if (fmt?.openai) {
     assert(input.providers[fmt.openai], "routing.formatProviders.openai must exist in providers");
   }
+  const routes = input.routing.routes ?? [];
+  for (const [idx, route] of routes.entries()) {
+    assert(route && typeof route === "object", `routing.routes[${idx}] must be an object`);
+    assert(typeof route.pathPrefix === "string" && route.pathPrefix.length > 0, `routing.routes[${idx}].pathPrefix is required`);
+    assert(route.pathPrefix.startsWith("/"), `routing.routes[${idx}].pathPrefix must start with '/'`);
+    assert(Boolean(input.providers[route.provider]), `routing.routes[${idx}].provider must exist in providers`);
+    assert(route.apiFormat === "openai" || route.apiFormat === "anthropic", `routing.routes[${idx}].apiFormat must be openai or anthropic`);
+    if (route.stripPrefix !== undefined) {
+      assert(typeof route.stripPrefix === "boolean", `routing.routes[${idx}].stripPrefix must be a boolean`);
+    }
+  }
 
   for (const [name, provider] of Object.entries(input.providers)) {
     assert(provider.baseURL, `providers.${name}.baseURL is required`);

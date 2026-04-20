@@ -59,13 +59,13 @@ export function renderAdminHtml(
         var(--bg);
     }
     .wrap {
-      max-width: 1120px;
-      margin: 22px auto 40px;
-      padding: 0 16px;
+      width: min(75vw, 1560px);
+      margin: 14px auto 30px;
     }
     .page-shell {
       display: grid;
       gap: 18px;
+      min-width: 0;
     }
     .workbench-main {
       background:
@@ -108,10 +108,11 @@ export function renderAdminHtml(
     .badge.warn.dot::before { background: var(--warn); }
     .card {
       border: 1px solid var(--line);
-      border-radius: 18px;
+      border-radius: 22px;
       background: linear-gradient(180deg, rgba(24, 24, 24, 0.98), rgba(14, 14, 14, 0.98));
-      padding: 18px;
+      padding: 20px;
       box-shadow: 0 20px 36px rgba(0, 0, 0, 0.28);
+      min-width: 0;
     }
     h1 {
       margin: 0 0 8px;
@@ -171,30 +172,10 @@ export function renderAdminHtml(
       padding: 7px 10px;
       text-transform: uppercase;
     }
-    .hero-description {
-      max-width: 760px;
-      font-size: 15px;
-      line-height: 1.65;
-      color: #d6d6d6;
-    }
     .hero-side {
       display: grid;
       gap: 14px;
       align-content: start;
-    }
-    .status-copy {
-      display: grid;
-      gap: 6px;
-    }
-    .status-title {
-      font-size: 13px;
-      font-weight: 700;
-      color: #ece0c4;
-    }
-    .status-desc {
-      font-size: 12px;
-      color: var(--muted);
-      line-height: 1.55;
     }
     .hero-status {
       display: flex;
@@ -210,7 +191,7 @@ export function renderAdminHtml(
       justify-content: center;
     }
     .page-message {
-      min-height: 52px;
+      min-height: 0;
       border: 1px dashed rgba(145, 153, 143, 0.22);
       border-radius: 14px;
       background: rgba(24, 29, 27, 0.76);
@@ -273,7 +254,7 @@ export function renderAdminHtml(
       border: 1px solid var(--line);
       border-radius: 12px;
       padding: 12px;
-      background: #fbfdff;
+      background: rgba(20, 20, 20, 0.96);
     }
     .provider-head {
       display: flex;
@@ -381,7 +362,7 @@ export function renderAdminHtml(
     }
     .console-hero {
       display: grid;
-      grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.78fr);
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 0.62fr);
       gap: 14px;
       align-items: start;
       padding: 20px;
@@ -393,7 +374,7 @@ export function renderAdminHtml(
     }
     .router-layout {
       display: grid;
-      grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.78fr);
+      grid-template-columns: minmax(0, 1fr);
       gap: 14px;
       align-items: start;
     }
@@ -422,6 +403,7 @@ export function renderAdminHtml(
     .panel-header {
       display: grid;
       gap: 6px;
+      min-width: 0;
     }
     .panel-header-split {
       grid-template-columns: minmax(0, 1fr) auto;
@@ -461,18 +443,30 @@ export function renderAdminHtml(
     .log-scene,
     .log-layout {
       display: grid;
-      gap: 12px;
+      gap: 16px;
     }
     .log-top-grid {
       display: grid;
-      grid-template-columns: 1.2fr 0.8fr 1fr;
-      gap: 12px;
-      align-items: start;
+      grid-template-columns: minmax(0, 1.35fr) repeat(2, minmax(260px, 0.82fr));
+      gap: 16px;
+      align-items: stretch;
+    }
+    .log-top-grid > .workspace-panel {
+      height: 100%;
+      padding: 22px;
+      border-radius: 22px;
+      background:
+        linear-gradient(160deg, rgba(255, 255, 255, 0.04), transparent 34%),
+        linear-gradient(180deg, rgba(24, 24, 24, 0.98), rgba(14, 14, 14, 0.98));
+    }
+    .log-top-grid > .workspace-panel .panel-header {
+      min-height: 88px;
+      align-content: start;
     }
     .log-main-grid {
       display: grid;
       grid-template-columns: minmax(0, 1fr);
-      gap: 12px;
+      gap: 16px;
       align-items: start;
     }
     .log-panel {
@@ -501,7 +495,9 @@ export function renderAdminHtml(
     }
     .log-actions-grid {
       display: grid;
-      gap: 10px;
+      gap: 14px;
+      align-content: start;
+      height: 100%;
     }
     .log-danger-tools {
       border: 1px dashed rgba(255, 255, 255, 0.12);
@@ -521,17 +517,26 @@ export function renderAdminHtml(
     }
     .log-actions-row {
       display: grid;
-      gap: 10px;
+      gap: 14px;
       align-items: start;
     }
+    .log-actions-row .actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .log-actions-row .actions button {
+      width: 100%;
+      justify-content: center;
+    }
     .log-limit-field {
-      max-width: 180px;
+      max-width: none;
     }
     .log-list-shell {
       border: 1px solid var(--line);
-      border-radius: 18px;
+      border-radius: 22px;
       background: linear-gradient(180deg, rgba(24, 24, 24, 0.98), rgba(14, 14, 14, 0.98));
-      padding: 14px;
+      padding: 18px;
     }
     .log-list-head {
       display: flex;
@@ -677,9 +682,9 @@ export function renderAdminHtml(
     }
     .timeline {
       margin-top: 8px;
-      border: 1px solid #d6e1f1;
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 10px;
-      background: linear-gradient(180deg, #ffffff, #f6f9ff);
+      background: linear-gradient(180deg, rgba(20, 20, 20, 0.98), rgba(12, 12, 12, 0.98));
       padding: 8px;
     }
     .timeline-head {
@@ -692,7 +697,7 @@ export function renderAdminHtml(
     .timeline-title {
       font-size: 12px;
       font-weight: 700;
-      color: #34527a;
+      color: #e7e7e7;
     }
     .chain-list {
       display: grid;
@@ -700,12 +705,12 @@ export function renderAdminHtml(
       margin-bottom: 8px;
     }
     .chain-item {
-      border: 1px dashed #c5d8ef;
+      border: 1px dashed rgba(255, 255, 255, 0.1);
       border-radius: 8px;
-      background: #f8fbff;
+      background: rgba(16, 16, 16, 0.94);
       padding: 6px 8px;
       font-size: 12px;
-      color: #23415f;
+      color: #dfdfdf;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
       word-break: break-word;
@@ -720,18 +725,18 @@ export function renderAdminHtml(
       gap: 10px;
     }
     .timeline-lane {
-      border: 1px solid #d7e2f3;
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 8px;
-      background: #fff;
+      background: rgba(16, 16, 16, 0.94);
       padding: 8px;
       min-width: 0;
     }
-    .timeline-lane.request-lane { background: linear-gradient(180deg, #ffffff, #f5f9ff); }
-    .timeline-lane.response-lane { background: linear-gradient(180deg, #ffffff, #f8fcfa); }
+    .timeline-lane.request-lane { background: linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(10, 10, 10, 0.98)); }
+    .timeline-lane.response-lane { background: linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(10, 10, 10, 0.98)); }
     .lane-title {
       font-size: 12px;
       font-weight: 700;
-      color: #456286;
+      color: #d8d8d8;
       margin-bottom: 6px;
     }
     .event-item {
@@ -795,9 +800,9 @@ export function renderAdminHtml(
       word-break: break-word;
     }
     .bubble {
-      border-left: 3px solid #cfd9eb;
+      border-left: 3px solid rgba(180, 180, 180, 0.5);
       padding: 6px 8px;
-      background: #f7faff;
+      background: rgba(16, 16, 16, 0.94);
       border-radius: 8px;
       font-size: 12px;
       margin-top: 6px;
@@ -805,15 +810,15 @@ export function renderAdminHtml(
       overflow-wrap: anywhere;
       word-break: break-word;
     }
-    .bubble.req { border-left-color: #7aa8ff; }
-    .bubble.res { border-left-color: #67c18f; }
+    .bubble.req { border-left-color: rgba(210, 210, 210, 0.7); }
+    .bubble.res { border-left-color: rgba(190, 190, 190, 0.7); }
     .bubble.system {
-      border-left-color: #8b7aff;
-      background: #f4f1ff;
+      border-left-color: rgba(170, 170, 170, 0.7);
+      background: rgba(18, 18, 18, 0.94);
     }
     .bubble.tool {
-      border-left-color: #3aa7a3;
-      background: #eefcfb;
+      border-left-color: rgba(200, 200, 200, 0.7);
+      background: rgba(18, 18, 18, 0.94);
     }
     .chat-item {
       margin-top: 6px;
@@ -840,26 +845,26 @@ export function renderAdminHtml(
       border-radius: 999px;
       padding: 2px 8px;
       font-size: 11px;
-      background: #fff;
-      color: #435a78;
+      background: rgba(28, 28, 28, 0.94);
+      color: #dddddd;
       text-transform: lowercase;
     }
-    .role-tag.role-system { background: #f2eeff; border-color: #d6ccff; color: #4f3f92; }
-    .role-tag.role-assistant { background: #eef5ff; border-color: #c7dbff; color: #234f91; }
-    .role-tag.role-user { background: #edfdf2; border-color: #bdeacb; color: #1f6a45; }
-    .role-tag.role-tool { background: #edfdfd; border-color: #bbe9e7; color: #146864; }
+    .role-tag.role-system { background: rgba(36, 36, 36, 0.94); border-color: rgba(255, 255, 255, 0.1); color: #dcdcdc; }
+    .role-tag.role-assistant { background: rgba(36, 36, 36, 0.94); border-color: rgba(255, 255, 255, 0.1); color: #e2e2e2; }
+    .role-tag.role-user { background: rgba(36, 36, 36, 0.94); border-color: rgba(255, 255, 255, 0.1); color: #f0f0f0; }
+    .role-tag.role-tool { background: rgba(36, 36, 36, 0.94); border-color: rgba(255, 255, 255, 0.1); color: #d8d8d8; }
     .toolcall-list {
       margin-top: 8px;
       display: grid;
       gap: 6px;
     }
     .toolcall-item {
-      border: 1px dashed #c6d8ef;
-      background: linear-gradient(180deg, #f8fbff, #f2f8ff);
+      border: 1px dashed rgba(255, 255, 255, 0.1);
+      background: linear-gradient(180deg, rgba(20, 20, 20, 0.96), rgba(12, 12, 12, 0.98));
       border-radius: 9px;
       padding: 8px;
       font-size: 12px;
-      color: #274161;
+      color: #dddddd;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
       word-break: break-word;
@@ -1188,205 +1193,10 @@ export function renderAdminHtml(
     .principle-list.compact {
       gap: 8px;
     }
-    :root {
-      --bg: #efe4d3;
-      --card: #fbf6ef;
-      --text: #1d1711;
-      --muted: rgba(82, 68, 50, 0.72);
-      --line: rgba(32, 26, 18, 0.1);
-      --line-strong: rgba(32, 26, 18, 0.18);
-      --accent: #272019;
-      --accent-soft: rgba(54, 43, 31, 0.08);
-      --ok: #312a23;
-      --warn: #5a5045;
-      --error: #4a4037;
-    }
-    body {
-      color: var(--text);
-      background:
-        radial-gradient(1200px 700px at -10% -10%, rgba(255, 255, 255, 0.76) 10%, transparent 70%),
-        radial-gradient(900px 500px at 110% -20%, rgba(224, 210, 191, 0.5) 10%, transparent 70%),
-        linear-gradient(180deg, #fbf6ef, #ede1d0);
-    }
-    .workbench-main {
-      background:
-        linear-gradient(180deg, rgba(252, 247, 240, 0.98), rgba(243, 234, 223, 0.98)),
-        #f7efe4;
-    }
-    .status,
-    .workbench-head,
-    .hero-slab,
-    .card,
-    .provider-item,
-    .log-panel,
-    .log-item,
-    .metric-card,
-    .archive-bucket,
-    .modal-card,
-    .summary-card,
-    .detail-pane,
-    .overview-card,
-    .log-list-shell,
-    .archive-card,
-    .page-message,
-    .error-box,
-    .json-empty,
-    .principle-item,
-    .log-empty {
-      background:
-        linear-gradient(180deg, rgba(255, 251, 246, 0.97), rgba(244, 236, 226, 0.98)),
-        #f8f0e4;
-      border-color: rgba(32, 26, 18, 0.1);
-      color: var(--text);
-      box-shadow: 0 22px 46px rgba(96, 72, 44, 0.12);
-    }
-    .hero-slab {
-      background:
-        radial-gradient(circle at top left, rgba(255, 255, 255, 0.82), transparent 34%),
-        linear-gradient(135deg, rgba(251, 245, 238, 0.98), rgba(239, 229, 216, 0.98));
-    }
-    .hero-card,
-    .hero-principle,
-    .status {
-      background:
-        linear-gradient(180deg, rgba(255, 251, 246, 0.96), rgba(241, 233, 221, 0.98)),
-        #f7efe4;
-      border-color: rgba(32, 26, 18, 0.08);
-    }
-    .overview-card,
-    .badge,
-    .meta-pill,
-    .context-chip,
-    .view-switch,
-    .view-segment,
-    .workbench-tab,
-    .log-item,
-    .chain-item,
-    .detail-pane,
-    .archive-card,
-    .log-chip,
-    .pill-ok,
-    .pill-err,
-    .pill-pending {
-      border-color: rgba(32, 26, 18, 0.08);
-      background: rgba(252, 247, 241, 0.88);
-      color: rgba(46, 37, 26, 0.8);
-    }
-    .provider-head strong,
-    .section-kicker,
-    .status-title,
-    .log-panel-title,
-    .detail-pane-title strong,
-    .summary-card-head,
-    .hero-principle strong,
-    .hero-side-title,
-    h1,
-    h2 {
-      color: #1b1510;
-    }
-    .status-desc,
-    .section-note,
-    .log-panel-copy,
-    .modal-subtitle,
-    .detail-pane-meta,
-    .muted,
-    .hero-principle span,
-    p {
-      color: rgba(82, 68, 50, 0.72);
-    }
-    .eyebrow,
-    .sidebar-state,
-    .workbench-link-state,
-    .module-stat,
-    .badge.ok,
-    .badge.warn {
-      background: rgba(249, 242, 233, 0.92);
-      border-color: rgba(32, 26, 18, 0.08);
-      color: rgba(44, 35, 25, 0.82);
-      box-shadow: none;
-    }
-    .badge.dot::before,
-    .badge.ok.dot::before,
-    .badge.warn.dot::before {
-      background: rgba(73, 61, 46, 0.72);
-    }
-    input, select, textarea, .archive-pre {
-      background: rgba(255, 252, 248, 0.96);
-      color: var(--text);
-      border-color: rgba(32, 26, 18, 0.1);
-    }
-    .json-pre {
-      background:
-        linear-gradient(180deg, rgba(251, 247, 241, 0.98), rgba(243, 235, 225, 0.98)),
-        #f8f1e6;
-      color: #221b14;
-      border-color: rgba(32, 26, 18, 0.08);
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.52);
-    }
-    .detail-pane-head,
-    .detail-pane-body,
-    .summary-card,
-    .archive-pre {
-      background: rgba(255, 251, 246, 0.82);
-      border-color: rgba(32, 26, 18, 0.08);
-    }
-    input:focus, select:focus, textarea:focus {
-      outline-color: rgba(42, 34, 24, 0.12);
-      border-color: rgba(42, 34, 24, 0.22);
-      box-shadow: 0 0 0 4px rgba(62, 47, 31, 0.06);
-    }
-    .view-segment.active,
-    .workbench-tab.active,
-    button,
-    .link-btn {
-      background: linear-gradient(180deg, rgba(252, 247, 241, 0.98), rgba(241, 233, 222, 0.98));
-      border-color: rgba(32, 26, 18, 0.1);
-      color: #231c15;
-      box-shadow: 0 10px 24px rgba(96, 72, 44, 0.08);
-    }
-    .ghost,
-    .view-segment {
-      background: rgba(249, 243, 235, 0.94);
-      border-color: rgba(32, 26, 18, 0.08);
-      color: rgba(47, 38, 28, 0.84);
-    }
-    .danger {
-      background: rgba(245, 237, 229, 0.98);
-      border-color: rgba(106, 84, 64, 0.14);
-      color: #4a3c31;
-    }
-    .mini-card,
-    .hero-principle {
-      background:
-        linear-gradient(180deg, rgba(252, 247, 241, 0.97), rgba(242, 234, 223, 0.98)),
-        #f7efe4;
-      border-color: rgba(32, 26, 18, 0.08);
-      box-shadow: 0 18px 34px rgba(96, 72, 44, 0.08);
-    }
-    .page-message {
-      background: rgba(248, 241, 232, 0.94);
-      color: rgba(70, 57, 42, 0.8);
-    }
-    .log-chip,
-    .pill-ok,
-    .pill-err,
-    .pill-pending {
-      background: rgba(249, 243, 235, 0.96);
-      border-color: rgba(32, 26, 18, 0.08);
-      color: rgba(47, 38, 28, 0.82);
-    }
-    .json-toggle,
-    .json-key {
-      color: #5b4a35;
-    }
-    .json-str { color: #251d15; }
-    .json-num { color: #6a5235; }
-    .json-bool { color: #53473c; }
-    .json-null,
-    .json-muted {
-      color: #897a69;
-    }
     @media (max-width: 980px) {
+      .wrap {
+        width: calc(100vw - 16px);
+      }
       .console-hero,
       .router-layout,
       .console-split,
@@ -1422,6 +1232,9 @@ export function renderAdminHtml(
       .archive-grid { grid-template-columns: 1fr; }
       .overview-grid { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
       .timeline-grid { grid-template-columns: 1fr; }
+      .log-actions-row .actions {
+        grid-template-columns: 1fr;
+      }
       .modal {
         padding: 8px;
       }
@@ -1472,7 +1285,7 @@ export function renderAdminHtml(
     const jsonNodeCollapsed = new Set();
     const SAVE_BUTTON_TEXT = SHOW_ROUTER ? "保存配置" : "保存归档设置";
     const SAVE_BUTTON_BUSY_TEXT = SHOW_ROUTER ? "保存中..." : "保存归档中...";
-    const RUNTIME_READY_TEXT = SHOW_ROUTER ? "配置已加载" : "日志服务正常";
+    const RUNTIME_READY_TEXT = SHOW_ROUTER ? "已加载" : "在线";
 
     const byId = (id) => document.getElementById(id);
 
@@ -1569,23 +1382,45 @@ export function renderAdminHtml(
         .filter(Boolean);
     }
 
+    function routeCard(route) {
+      const apiFormat = route && route.apiFormat === "anthropic" ? "anthropic" : "openai";
+      const stripPrefix = Boolean(route && route.stripPrefix);
+      return '<div class="provider-item route-item">' +
+        '<div class="provider-head">' +
+        '<label class="field"><span class="sr-only">入口前缀</span><input data-k="pathPrefix" value="' + esc(route?.pathPrefix || "") + '" placeholder="/v1 或 /claude" /></label>' +
+        '<button class="danger" data-action="remove-route">删除规则</button>' +
+        '</div>' +
+        '<div class="provider-grid">' +
+        '<label class="field"><span>格式</span><select data-k="apiFormat">' +
+          '<option value="openai"' + (apiFormat === "openai" ? " selected" : "") + '>OpenAI</option>' +
+          '<option value="anthropic"' + (apiFormat === "anthropic" ? " selected" : "") + '>Claude</option>' +
+        '</select></label>' +
+        '<label class="field"><span>上游</span><select data-k="routeProvider"></select></label>' +
+        '<label class="field"><span>转发</span><select data-k="stripPrefix">' +
+          '<option value="false"' + (!stripPrefix ? " selected" : "") + '>保留前缀</option>' +
+          '<option value="true"' + (stripPrefix ? " selected" : "") + '>移除前缀</option>' +
+        '</select></label>' +
+        '</div></div>';
+    }
+
     function rebuildProviderSelectors() {
       const names = Array.from(new Set(getProviderNamesFromDom()));
       const currentDefault = byId("defaultProvider").value || state.routing.defaultProvider || "";
-      const currentAnth = byId("anthropicProvider").value || state.routing.formatProviders?.anthropic || "";
-      const currentOpenai = byId("openaiProvider").value || state.routing.formatProviders?.openai || "";
 
       byId("defaultProvider").innerHTML = names.map((n) => '<option value="' + esc(n) + '">' + esc(n) + '</option>').join("");
-      const options = ['<option value="">(none)</option>'].concat(
-        names.map((n) => '<option value="' + esc(n) + '">' + esc(n) + '</option>')
-      ).join("");
-      byId("anthropicProvider").innerHTML = options;
-      byId("openaiProvider").innerHTML = options;
-
       const nextDefault = names.includes(currentDefault) ? currentDefault : (names[0] || "");
       byId("defaultProvider").value = nextDefault;
-      byId("anthropicProvider").value = names.includes(currentAnth) ? currentAnth : "";
-      byId("openaiProvider").value = names.includes(currentOpenai) ? currentOpenai : "";
+      document.querySelectorAll('.route-item').forEach((item) => {
+        const select = item.querySelector('[data-k="routeProvider"]');
+        if (!select) {
+          return;
+        }
+        const current = select.getAttribute("data-current") || select.value || "";
+        select.innerHTML = names.map((n) => '<option value="' + esc(n) + '">' + esc(n) + '</option>').join("");
+        const next = names.includes(current) ? current : (names[0] || "");
+        select.value = next;
+        select.setAttribute("data-current", next);
+      });
     }
 
     function wireProviderItem(item) {
@@ -1639,6 +1474,60 @@ export function renderAdminHtml(
       list.querySelectorAll(".provider-item").forEach((item) => wireProviderItem(item));
     }
 
+    function normalizeRoutes() {
+      const routes = Array.isArray(state.routing?.routes) ? state.routing.routes.filter(Boolean) : [];
+      if (routes.length > 0) {
+        return routes;
+      }
+      const fallback = [];
+      const openaiProvider = state.routing?.formatProviders?.openai || state.routing?.defaultProvider || "";
+      const anthropicProvider = state.routing?.formatProviders?.anthropic || "";
+      if (openaiProvider) {
+        fallback.push({ pathPrefix: "/v1", provider: openaiProvider, apiFormat: "openai", stripPrefix: true });
+      }
+      if (anthropicProvider) {
+        fallback.push({ pathPrefix: "/claude", provider: anthropicProvider, apiFormat: "anthropic", stripPrefix: true });
+      }
+      return fallback;
+    }
+
+    function wireRouteItem(item) {
+      const removeBtn = item.querySelector('button[data-action="remove-route"]');
+      const providerSelect = item.querySelector('[data-k="routeProvider"]');
+      if (providerSelect) {
+        providerSelect.addEventListener("change", () => {
+          providerSelect.setAttribute("data-current", providerSelect.value || "");
+          syncDirtyState();
+        });
+      }
+      item.querySelectorAll("input, select").forEach((el) => {
+        el.addEventListener("input", () => syncDirtyState());
+        el.addEventListener("change", () => syncDirtyState());
+      });
+      if (removeBtn) {
+        removeBtn.addEventListener("click", () => {
+          item.remove();
+          syncDirtyState();
+          setMessage("已删除一条路径规则，记得保存。", "muted");
+        });
+      }
+    }
+
+    function renderRoutes() {
+      const list = byId("routesList");
+      const routes = normalizeRoutes();
+      list.innerHTML = routes.map((route) => routeCard(route)).join("");
+      list.querySelectorAll(".route-item").forEach((item, index) => {
+        const route = routes[index] || {};
+        const select = item.querySelector('[data-k="routeProvider"]');
+        if (select) {
+          select.setAttribute("data-current", route.provider || "");
+        }
+        wireRouteItem(item);
+      });
+      rebuildProviderSelectors();
+    }
+
     function bindDirtyTracking() {
       document.querySelectorAll("input, select").forEach((el) => {
         if (el.dataset.dirtyBound === "true") {
@@ -1671,20 +1560,19 @@ export function renderAdminHtml(
       const names = Object.keys(next.providers || {});
       if (names.length === 0) errors.push("至少需要一个 Provider。");
       if (!next.providers[next.routing.defaultProvider]) errors.push("Default Provider 必须存在于 Provider 列表。");
-      if (next.routing.autoDetectProviderByFormat) {
-        if (!next.routing.formatProviders?.anthropic) {
-          errors.push("已开启自动识别时，必须选择 Anthropic Provider。");
+      const routes = Array.isArray(next.routing.routes) ? next.routing.routes : [];
+      if (routes.length === 0) errors.push("至少需要一条路径规则。");
+      routes.forEach((route, index) => {
+        if (!route.pathPrefix || !route.pathPrefix.startsWith("/")) {
+          errors.push('规则 #' + (index + 1) + ' 的入口前缀必须以 / 开头。');
         }
-        if (!next.routing.formatProviders?.openai) {
-          errors.push("已开启自动识别时，必须选择 OpenAI Provider。");
+        if (!next.providers[route.provider]) {
+          errors.push('规则 #' + (index + 1) + ' 的上游不存在。');
         }
-        if (next.routing.formatProviders?.anthropic && !next.providers[next.routing.formatProviders.anthropic]) {
-          errors.push("Anthropic Provider 必须存在于 Provider 列表。");
+        if (route.apiFormat !== "openai" && route.apiFormat !== "anthropic") {
+          errors.push('规则 #' + (index + 1) + ' 的格式必须是 OpenAI 或 Claude。');
         }
-        if (next.routing.formatProviders?.openai && !next.providers[next.routing.formatProviders.openai]) {
-          errors.push("OpenAI Provider 必须存在于 Provider 列表。");
-        }
-      }
+      });
 
       names.forEach((n) => {
         const p = next.providers[n];
@@ -1717,22 +1605,20 @@ export function renderAdminHtml(
       next.listen.port = Number(byId("listenPort").value);
       next.requestTimeoutMs = Number(byId("timeoutMs").value);
       next.routing.defaultProvider = byId("defaultProvider").value;
-      next.routing.byHeader = byId("routeHeader").value.trim() || undefined;
-      next.routing.autoDetectProviderByFormat = byId("autoDetect").value === "true";
-      next.routing.formatProviders = {
-        anthropic: byId("anthropicProvider").value || undefined,
-        openai: byId("openaiProvider").value || undefined
-      };
+      next.routing.routes = Array.from(document.querySelectorAll(".route-item")).map((card) => {
+        const get = (k) => {
+          const input = card.querySelector('[data-k="' + k + '"]');
+          return input ? input.value.trim() : "";
+        };
+        return {
+          pathPrefix: get("pathPrefix"),
+          provider: get("routeProvider"),
+          apiFormat: get("apiFormat") === "anthropic" ? "anthropic" : "openai",
+          stripPrefix: get("stripPrefix") === "true"
+        };
+      });
 
-      function resolveInjectPreset(name, prev) {
-        const anth = next.routing.formatProviders?.anthropic;
-        const openai = next.routing.formatProviders?.openai;
-        if (anth && name === anth && name !== openai) {
-          return { header: "x-api-key", prefix: "" };
-        }
-        if (openai && name === openai && name !== anth) {
-          return { header: "authorization", prefix: "Bearer " };
-        }
+      function resolveInjectPreset(prev) {
         if (prev?.authMode && typeof prev.authMode === "object" && prev.authMode.type === "inject") {
           return {
             header: prev.authMode.header || "authorization",
@@ -1745,13 +1631,16 @@ export function renderAdminHtml(
       const cards = Array.from(document.querySelectorAll(".provider-item"));
       const providers = {};
       for (const card of cards) {
+        if (card.classList.contains("route-item")) {
+          continue;
+        }
         const get = (k) => card.querySelector('[data-k="' + k + '"]').value.trim();
         const name = get("providerName");
         const apiKey = get("apiKey");
         const authModeKind = get("authModeKind") || "inject";
         const prevName = (card.getAttribute("data-origin-name") || "").trim();
         const prev = (state.providers && (state.providers[name] || state.providers[prevName])) || {};
-        const injectPreset = resolveInjectPreset(name, prev);
+        const injectPreset = resolveInjectPreset(prev);
         const prevInject = prev?.authMode && typeof prev.authMode === "object" && prev.authMode.type === "inject"
           ? prev.authMode
           : null;
@@ -1794,10 +1683,8 @@ export function renderAdminHtml(
       byId("listenHost").value = state.listen.host || "127.0.0.1";
       byId("listenPort").value = state.listen.port || 5290;
       byId("timeoutMs").value = state.requestTimeoutMs || 120000;
-      byId("routeHeader").value = state.routing.byHeader || "";
-      byId("autoDetect").value = String(Boolean(state.routing.autoDetectProviderByFormat));
       renderProviders();
-      rebuildProviderSelectors();
+      renderRoutes();
       bindDirtyTracking();
       setDirty(false);
       applyRuntimeReadyMessage();
@@ -1806,12 +1693,12 @@ export function renderAdminHtml(
     function applyRuntimeReadyMessage() {
       if (state.logging?.archiveRequests) {
         setMessage(SHOW_ROUTER
-          ? "配置已加载。修改并保存后会立即生效。"
-          : "归档设置已加载。当前已开启原始请求/响应归档，新请求会生成可查看详情。", "muted");
+          ? "已加载"
+          : "归档开启", "muted");
       } else {
         setMessage(SHOW_ROUTER
-          ? "配置已加载。修改并保存后会立即生效。"
-          : "归档设置已加载。当前原始归档已关闭：已存在的归档日志仍可查看，但新的请求只会记录摘要，不会新增可查看详情项。", "muted");
+          ? "已加载"
+          : "归档关闭", "muted");
       }
       byId("runtimeBadge").className = "badge ok dot";
       byId("runtimeBadge").textContent = RUNTIME_READY_TEXT;
@@ -1881,7 +1768,7 @@ export function renderAdminHtml(
       wrap.innerHTML = groups.map((group) => {
         const copy = group.key === "archive"
           ? "当前可查看列表中的记录都带有详情，未归档详情的记录不会展示。"
-          : "当前视图下 " + group.title + " 日志共 " + String(group.count) + " 条。";
+          : group.title + " " + String(group.count);
         const meta = group.key === "archive" ? archiveState : "已归档详情";
         return '<div class="archive-bucket">' +
           '<div class="archive-bucket-head"><strong>' + escHtml(group.title) + '</strong><span>' + escHtml(meta) + '</span></div>' +
@@ -1900,8 +1787,8 @@ export function renderAdminHtml(
       if (visible.length === 0) {
         const archiveDisabled = !Boolean(state?.logging?.archiveRequests);
         const hint = archiveDisabled
-          ? "当前没有可查看的日志详情。归档关闭时，新请求不会新增详情。"
-          : "当前筛选下没有可查看的日志详情。只显示带归档详情的记录。";
+          ? "暂无详情"
+          : "无结果";
         list.innerHTML = '<div class="log-empty">' + escHtml(hint) + "</div>";
         return;
       }
@@ -2734,7 +2621,7 @@ export function renderAdminHtml(
       }
       const data = await r.json();
       renderLogs(data.items || []);
-      setLogState("已连接", true);
+      setLogState("在线", true);
     }
 
     async function fetchUsageMetricsOnce() {
@@ -2803,7 +2690,7 @@ export function renderAdminHtml(
           logEventSource.close();
           logEventSource = null;
         }
-        setLogState("手动刷新模式", true);
+        setLogState("手动", true);
         return;
       }
       if (logEventSource) {
@@ -2816,13 +2703,13 @@ export function renderAdminHtml(
           const payload = JSON.parse(ev.data);
           renderLogs(payload.items || []);
           void fetchUsageMetricsOnce();
-          setLogState("实时更新中", true);
+          setLogState("实时", true);
         } catch {
-          setLogState("解析失败", false);
+          setLogState("错误", false);
         }
       });
       logEventSource.onerror = () => {
-        setLogState("重连中", false);
+        setLogState("重连", false);
       };
     }
 
@@ -2854,7 +2741,7 @@ export function renderAdminHtml(
         }
         state = await r.json();
         render();
-        setMessage(SHOW_ROUTER ? "保存成功，运行时配置已更新。" : "归档设置已保存，将影响后续请求。", "ok");
+        setMessage("已保存", "ok");
       } catch (e) {
         setMessage("保存失败: " + e.message, "error");
       } finally {
@@ -2882,6 +2769,28 @@ export function renderAdminHtml(
         setDirty(true);
         setMessage("已添加新上游，记得保存。", "muted");
       });
+      byId("addRoute").addEventListener("click", () => {
+        const list = byId("routesList");
+        const defaults = normalizeRoutes();
+        const fallbackProvider = byId("defaultProvider").value || defaults[0]?.provider || "";
+        list.insertAdjacentHTML("beforeend", routeCard({
+          pathPrefix: "/route-" + (list.querySelectorAll(".route-item").length + 1),
+          provider: fallbackProvider,
+          apiFormat: "openai",
+          stripPrefix: true
+        }));
+        const newItem = list.lastElementChild;
+        if (newItem) {
+          const select = newItem.querySelector('[data-k="routeProvider"]');
+          if (select) {
+            select.setAttribute("data-current", fallbackProvider);
+          }
+          wireRouteItem(newItem);
+        }
+        rebuildProviderSelectors();
+        setDirty(true);
+        setMessage("已添加新路径规则，记得保存。", "muted");
+      });
     }
 
     if (SHOW_LOGS) {
@@ -2897,7 +2806,7 @@ export function renderAdminHtml(
       byId("reloadBtn").addEventListener("click", async () => {
         if (dirty && !confirm("当前有未保存改动，确认放弃并重载吗？")) return;
         await load();
-        setMessage(SHOW_ROUTER ? "已从文件重载配置。" : "已从文件重载归档设置。", "ok");
+        setMessage("已重载", "ok");
       });
 
       window.addEventListener("beforeunload", (e) => {
@@ -2910,7 +2819,7 @@ export function renderAdminHtml(
     if (SHOW_LOGS) {
       byId("logAutoBtn").addEventListener("click", () => {
         autoRefresh = !autoRefresh;
-        byId("logAutoBtn").textContent = autoRefresh ? "自动刷新：开" : "自动刷新：关";
+        byId("logAutoBtn").textContent = autoRefresh ? "自动刷新: 开" : "自动刷新: 关";
         if (autoRefresh) {
           void fetchLogsOnce();
         }

@@ -8,6 +8,8 @@ export type LoopBuilderDraft = {
   command: string;
   workflowCarryContext: boolean;
   workflowLoopFromStart: boolean;
+  workflowNewSessionPerStep: boolean;
+  workflowNewSessionPerRound: boolean;
   workflowSharedSession: boolean;
   workflowFullAccess: boolean;
   workflowSteps: WorkflowStep[];

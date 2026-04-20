@@ -86,7 +86,8 @@ function buildCollectFormBody(mode: "command" | "workflow"): {
     commandInputEl: { value: "echo ok" },
     cwdInputEl: { value: "" },
     workflowLoopFromStartEl: { value: "false" },
-    workflowSharedSessionEl: { value: "true" },
+    workflowNewSessionPerStepEl: { value: "false" },
+    workflowNewSessionPerRoundEl: { value: "false" },
     workflowFullAccessEl: { value: "false" },
     modeDraft: { workflowCarryContext: "false" },
     workflowBuilderRows: [],
@@ -190,6 +191,8 @@ test("collectFormBody resets workflow payload in command mode", () => {
   assert.equal((body.workflowSteps as unknown[]).length, 0);
   assert.equal(body.workflowCarryContext, false);
   assert.equal(body.workflowLoopFromStart, false);
+  assert.equal(body.workflowNewSessionPerStep, false);
+  assert.equal(body.workflowNewSessionPerRound, false);
   assert.equal(body.workflowSharedSession, true);
   assert.equal(body.workflowFullAccess, false);
 });

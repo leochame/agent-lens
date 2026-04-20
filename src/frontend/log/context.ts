@@ -9,13 +9,13 @@ export function buildLogPageContext(view: "all" | "openai" | "anthropic"): LogPa
     activePath,
     modeTitle,
     pageTitle: `AgentLens Logs (${modeTitle})`,
-    pageDescription: "按请求类型查看已归档的 request / response 配对，主视图坚持原生日志优先。",
+    pageDescription: "",
     pageEyebrow: "Log",
-    pageContext: `当前视图：${modeTitle} / 只显示带完整 archived detail 的记录`,
+    pageContext: modeTitle,
     pageSectionLabel: `Logs / ${modeTitle}`,
     primaryActionLabel: "保存归档设置",
     secondaryActionLabel: "从文件重载",
-    statusTitle: "归档设置",
-    statusDescription: "控制后续请求是否保存原始详情；现有归档日志的查看规则不变。"
+    statusTitle: "",
+    statusDescription: ""
   };
 }

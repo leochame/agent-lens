@@ -12,8 +12,7 @@ test("renderLogHtml emits syntactically valid inline script", () => {
   });
   assert.match(html, /<title>AgentLens Logs \(All\)<\/title>/);
   assert.match(html, /href="\/__log"/);
-  assert.match(html, /按请求类型查看已归档的 request \/ response 配对/);
-  assert.match(html, /日志范围/);
+  assert.match(html, /Logs \/ All/);
   assert.match(html, /保存归档设置/);
   assert.match(html, /已归档日志列表/);
   assert.match(html, /id="archiveRequests"/);
@@ -22,7 +21,6 @@ test("renderLogHtml emits syntactically valid inline script", () => {
   assert.match(html, /id="closeJsonBtn"/);
   assert.match(html, /危险操作/);
   assert.match(html, /id="responseModeBadge"/);
-  assert.match(html, /请求保持原生聚焦，响应支持 SSE 聚合展示与 JSON 树查看/);
   assert.doesNotMatch(html, /id="providersList"/);
   assert.doesNotMatch(html, /id="workflowExportLoopBtn"/);
   assert.doesNotMatch(html, /这里只切换当前日志视图，不会离开当前页面/);

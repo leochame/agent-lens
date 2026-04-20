@@ -8,6 +8,10 @@ function validConfig(): AppConfig {
     listen: { host: "127.0.0.1", port: 5290 },
     routing: {
       defaultProvider: "openai",
+      routes: [
+        { pathPrefix: "/v1", provider: "openai", apiFormat: "openai", stripPrefix: true },
+        { pathPrefix: "/claude", provider: "anthropic", apiFormat: "anthropic", stripPrefix: true }
+      ],
       formatProviders: {
         openai: "openai",
         anthropic: "anthropic"
@@ -54,4 +58,10 @@ test("validateConfig rejects unknown byPathPrefix provider", () => {
   const cfg = validConfig();
   cfg.routing.byPathPrefix = { "/x": "missing-provider" };
   assert.throws(() => validateConfig(cfg), /byPathPrefix provider not found/);
+});
+
+test("validateConfig rejects invalid route rules", () => {
+  const cfg = validConfig();
+  cfg.routing.routes = [{ pathPrefix: "claude", provider: "missing", apiFormat: "unknown" as never }];
+  assert.throws(() => validateConfig(cfg), /routing\.routes\[0\]\.pathPrefix must start with '\//);
 });

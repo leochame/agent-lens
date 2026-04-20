@@ -22,7 +22,7 @@ test("renderAdminHtml uses consolidated hero layout with shared navigation", () 
   assert.match(html, /Logs \/ Anthropic/);
   assert.match(html, /id="msg"/);
   assert.match(html, /href="\/__log\/anthropic"/);
-  assert.match(html, /当前视图：Anthropic/);
+  assert.match(html, /Anthropic/);
   assert.match(html, /保存归档设置/);
   assert.match(html, /归档设置/);
   assert.match(html, /列表操作/);
@@ -42,13 +42,11 @@ test("renderAdminHtml uses consolidated hero layout with shared navigation", () 
 
 test("renderAdminHtml router page keeps only primary state and action copy", () => {
   const html = renderAdminHtml("all", null, { section: "router" });
-  assert.match(html, /当前查看：路由配置/);
+  assert.match(html, /Settings \/ Router/);
   assert.match(html, /监听地址/);
   assert.match(html, /General/);
   assert.match(html, /Routing/);
   assert.match(html, /Providers/);
-  assert.match(html, /class="router-aside"/);
-  assert.match(html, /先默认，后分流/);
   assert.match(html, /添加上游/);
   assert.doesNotMatch(html, /建议先设置默认上游/);
   assert.doesNotMatch(html, /保存配置会写回配置文件并立即生效/);
@@ -58,8 +56,8 @@ test("renderAdminHtml log page bootstraps config through render path", () => {
   const html = renderAdminHtml("all", null, { section: "log" });
   assert.match(html, /state = await r\.json\(\);\s*render\(\);/);
   assert.match(html, /state = INITIAL_CONFIG;\s*render\(\);/);
-  assert.match(html, /当前没有可查看的日志详情。归档关闭时，新请求不会新增详情。/);
-  assert.match(html, /当前筛选下没有可查看的日志详情。只显示带归档详情的记录。/);
+  assert.match(html, /暂无详情/);
+  assert.match(html, /无结果/);
   assert.match(html, /responseModeBadge\.textContent = payload\?\.response\?\.isSse \? "SSE 聚合" : "原始响应"/);
   assert.doesNotMatch(html, /当前没有 OpenAI 日志详情/);
   assert.doesNotMatch(html, /当前没有 Anthropic 日志详情/);

@@ -1,0 +1,15 @@
+{
+  "taskId": "a25234a2-9bf8-4dab-8f08-c2f1d4abd7eb",
+  "records": [
+    {
+      "at": "2026-04-20T04:11:02.440Z",
+      "prompt": "shared session prompt",
+      "result": {
+        "status": "success",
+        "error": null,
+        "stdout": "[round 1] [step 1/2] step-1\n[attempt 1/1]\nok\n\n[round 1] [step 2/2] step-2\n[attempt 1/1]\nok\n\n",
+        "stderr": "[round 1] [step 1/2] step-1\n[attempt 1/1]\n\n\n[round 1] [step 2/2] step-2\n[attempt 1/1]\n\n\n"
+      }
+    }
+  ]
+}

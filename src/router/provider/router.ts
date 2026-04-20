@@ -1,6 +1,6 @@
 import { IncomingMessage } from "node:http";
 import { URL } from "node:url";
-import { AppConfig, RoutingDecision } from "./types";
+import { AppConfig, RouteRule, RoutingDecision } from "./types";
 
 function rewritePath(pathWithQuery: string, from: string, to: string): string {
   const [pathname, ...queryParts] = pathWithQuery.split("?");
@@ -27,7 +27,50 @@ function applyPathRewrite(pathWithQuery: string, rules?: { from: string; to: str
   return current;
 }
 
+function routeMatches(pathname: string, prefix: string): boolean {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
+
+function findRouteRule(config: AppConfig, req: IncomingMessage): RouteRule | null {
+  const routes = Array.isArray(config.routing.routes) ? config.routing.routes : [];
+  if (routes.length === 0) {
+    return null;
+  }
+  const reqUrl = req.url ?? "/";
+  const pathname = reqUrl.split("?")[0] || "/";
+  let winner: RouteRule | null = null;
+  for (const route of routes) {
+    if (!routeMatches(pathname, route.pathPrefix)) {
+      continue;
+    }
+    if (!config.providers[route.provider]) {
+      continue;
+    }
+    if (!winner || route.pathPrefix.length > winner.pathPrefix.length) {
+      winner = route;
+    }
+  }
+  return winner;
+}
+
+function stripRoutePrefix(pathWithQuery: string, prefix: string): string {
+  const [pathname, ...queryParts] = pathWithQuery.split("?");
+  const query = queryParts.length > 0 ? `?${queryParts.join("?")}` : "";
+  if (pathname === prefix) {
+    return `/${query}`;
+  }
+  if (pathname.startsWith(`${prefix}/`)) {
+    return `${pathname.slice(prefix.length)}${query}`;
+  }
+  return pathWithQuery;
+}
+
 function selectProviderName(config: AppConfig, req: IncomingMessage): string {
+  const route = findRouteRule(config, req);
+  if (route) {
+    return route.provider;
+  }
+
   const byHeader = config.routing.byHeader?.toLowerCase();
   const byPathPrefix = config.routing.byPathPrefix ?? {};
   const reqUrl = req.url ?? "/";
@@ -95,6 +138,7 @@ function detectByFormat(config: AppConfig, req: IncomingMessage): string | null 
 }
 
 export function resolveRouting(config: AppConfig, req: IncomingMessage): RoutingDecision {
+  const route = findRouteRule(config, req);
   const providerName = selectProviderName(config, req);
   const provider = config.providers[providerName];
   if (!provider) {
@@ -102,7 +146,11 @@ export function resolveRouting(config: AppConfig, req: IncomingMessage): Routing
   }
 
   const rawPath = req.url ?? "/";
-  const targetPathWithQuery = applyPathRewrite(rawPath, provider.pathRewrite);
+  const targetPathWithQuery = route
+    ? route.stripPrefix
+      ? stripRoutePrefix(rawPath, route.pathPrefix)
+      : rawPath
+    : applyPathRewrite(rawPath, provider.pathRewrite);
 
   try {
     new URL(provider.baseURL);
@@ -113,6 +161,7 @@ export function resolveRouting(config: AppConfig, req: IncomingMessage): Routing
   return {
     providerName,
     provider,
+    apiFormat: route?.apiFormat ?? "unknown",
     targetPathWithQuery
   };
 }

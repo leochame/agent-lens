@@ -169,6 +169,8 @@ export class LoopScheduler {
       ensureWorkflowHasEnabledSteps(workflowSteps);
     }
     await this.validateWorkflowStepPaths(workflowSteps, resolvedTaskCwd ? resolvedTaskCwd.runCwd : null);
+    const workflowNewSessionPerStep = normalized.workflowNewSessionPerStep ?? !(normalized.workflowSharedSession ?? true);
+    const workflowNewSessionPerRound = normalized.workflowNewSessionPerRound ?? !(normalized.workflowSharedSession ?? true);
     const task: LoopTask = {
       id: randomUUID(),
       name: normalized.name,
@@ -178,7 +180,9 @@ export class LoopScheduler {
       workflowSteps,
       workflowCarryContext: normalized.workflowCarryContext ?? false,
       workflowLoopFromStart: normalized.workflowLoopFromStart ?? false,
-      workflowSharedSession: normalized.workflowSharedSession ?? true,
+      workflowNewSessionPerStep,
+      workflowNewSessionPerRound,
+      workflowSharedSession: !(workflowNewSessionPerStep || workflowNewSessionPerRound),
       workflowFullAccess: normalized.workflowFullAccess ?? false,
       workflowResumeStepIndex: null,
       workflowResumeUpdatedAt: null,
@@ -237,9 +241,15 @@ export class LoopScheduler {
     const workflowLoopFromStart = normalized.workflowLoopFromStart === undefined
       ? current.workflowLoopFromStart
       : (parseOptionalBoolean(normalized.workflowLoopFromStart) ?? current.workflowLoopFromStart);
+    const workflowNewSessionPerStep = normalized.workflowNewSessionPerStep === undefined
+      ? current.workflowNewSessionPerStep
+      : (parseOptionalBoolean(normalized.workflowNewSessionPerStep) ?? current.workflowNewSessionPerStep);
+    const workflowNewSessionPerRound = normalized.workflowNewSessionPerRound === undefined
+      ? current.workflowNewSessionPerRound
+      : (parseOptionalBoolean(normalized.workflowNewSessionPerRound) ?? current.workflowNewSessionPerRound);
     const workflowSharedSession = normalized.workflowSharedSession === undefined
-      ? current.workflowSharedSession
-      : (parseOptionalBoolean(normalized.workflowSharedSession) ?? current.workflowSharedSession);
+      ? !(workflowNewSessionPerStep || workflowNewSessionPerRound)
+      : (parseOptionalBoolean(normalized.workflowSharedSession) ?? !(workflowNewSessionPerStep || workflowNewSessionPerRound));
     const workflowFullAccess = normalized.workflowFullAccess === undefined
       ? current.workflowFullAccess
       : (parseOptionalBoolean(normalized.workflowFullAccess) ?? current.workflowFullAccess);
@@ -252,6 +262,8 @@ export class LoopScheduler {
       workflowSteps,
       workflowCarryContext: normalized.workflowCarryContext ?? current.workflowCarryContext,
       workflowLoopFromStart,
+      workflowNewSessionPerStep,
+      workflowNewSessionPerRound,
       workflowSharedSession,
       workflowFullAccess,
       updatedAt: nowIso()
@@ -424,6 +436,8 @@ export class LoopScheduler {
       ensureWorkflowHasEnabledSteps(workflowSteps);
     }
     await this.validateWorkflowStepPaths(workflowSteps, resolvedTaskCwd ? resolvedTaskCwd.runCwd : null);
+    const workflowNewSessionPerStep = normalized.workflowNewSessionPerStep ?? !(normalized.workflowSharedSession ?? true);
+    const workflowNewSessionPerRound = normalized.workflowNewSessionPerRound ?? !(normalized.workflowSharedSession ?? true);
     const previewTask: LoopTask = {
       id: randomUUID(),
       name: normalized.name || "preview",
@@ -433,7 +447,9 @@ export class LoopScheduler {
       workflowSteps,
       workflowCarryContext: normalized.workflowCarryContext ?? false,
       workflowLoopFromStart: normalized.workflowLoopFromStart ?? false,
-      workflowSharedSession: normalized.workflowSharedSession ?? true,
+      workflowNewSessionPerStep,
+      workflowNewSessionPerRound,
+      workflowSharedSession: !(workflowNewSessionPerStep || workflowNewSessionPerRound),
       workflowFullAccess: normalized.workflowFullAccess ?? false,
       workflowResumeStepIndex: null,
       workflowResumeUpdatedAt: null,
@@ -742,6 +758,8 @@ export class LoopScheduler {
               workflowSteps: steps,
               workflowCarryContext: task.workflowCarryContext,
               workflowLoopFromStart: task.workflowLoopFromStart,
+              workflowNewSessionPerStep: task.workflowNewSessionPerStep,
+              workflowNewSessionPerRound: task.workflowNewSessionPerRound,
               workflowSharedSession: task.workflowSharedSession,
               workflowFullAccess: task.workflowFullAccess
             },

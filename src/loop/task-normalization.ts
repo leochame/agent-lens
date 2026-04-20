@@ -166,6 +166,18 @@ export function normalizeTaskInput(raw: CreateLoopTaskInput | UpdateLoopTaskInpu
       next.workflowLoopFromStart = value;
     }
   }
+  if (raw.workflowNewSessionPerStep !== undefined) {
+    const value = parseOptionalBoolean(raw.workflowNewSessionPerStep);
+    if (value !== undefined) {
+      next.workflowNewSessionPerStep = value;
+    }
+  }
+  if (raw.workflowNewSessionPerRound !== undefined) {
+    const value = parseOptionalBoolean(raw.workflowNewSessionPerRound);
+    if (value !== undefined) {
+      next.workflowNewSessionPerRound = value;
+    }
+  }
   if (raw.workflowSharedSession !== undefined) {
     const value = parseOptionalBoolean(raw.workflowSharedSession);
     if (value !== undefined) {
@@ -359,6 +371,8 @@ export function normalizeLoadedTask(raw: LoopTask): LoopTask {
   const workflowSteps = ensureWorkflowSteps((raw as Partial<LoopTask>).workflowSteps, workflow);
   const workflowLoopFromStart = parseOptionalBoolean((raw as Partial<LoopTask>).workflowLoopFromStart);
   const workflowCarryContext = parseOptionalBoolean((raw as Partial<LoopTask>).workflowCarryContext);
+  const workflowNewSessionPerStep = parseOptionalBoolean((raw as Partial<LoopTask>).workflowNewSessionPerStep);
+  const workflowNewSessionPerRound = parseOptionalBoolean((raw as Partial<LoopTask>).workflowNewSessionPerRound);
   const workflowSharedSession = parseOptionalBoolean((raw as Partial<LoopTask>).workflowSharedSession);
   const workflowFullAccess = parseOptionalBoolean((raw as Partial<LoopTask>).workflowFullAccess);
   const workflowResumeStepIndex = normalizeOptionalPositiveInt((raw as Partial<LoopTask>).workflowResumeStepIndex);
@@ -371,6 +385,9 @@ export function normalizeLoadedTask(raw: LoopTask): LoopTask {
   const runner = normalizeWorkflowRunner((raw as Partial<LoopTask>).runner);
   const cwdRaw = (raw as Partial<LoopTask>).cwd;
   const commandRaw = (raw as Partial<LoopTask>).command;
+  const sharedSession = workflowSharedSession ?? true;
+  const newSessionPerStep = workflowNewSessionPerStep ?? !sharedSession;
+  const newSessionPerRound = workflowNewSessionPerRound ?? !sharedSession;
   return {
     ...raw,
     runner,
@@ -386,7 +403,9 @@ export function normalizeLoadedTask(raw: LoopTask): LoopTask {
     workflowSteps,
     workflowCarryContext: workflowCarryContext ?? false,
     workflowLoopFromStart: workflowLoopFromStart ?? false,
-    workflowSharedSession: workflowSharedSession ?? true,
+    workflowNewSessionPerStep: newSessionPerStep,
+    workflowNewSessionPerRound: newSessionPerRound,
+    workflowSharedSession: !(newSessionPerStep || newSessionPerRound),
     workflowFullAccess: workflowFullAccess ?? false,
     workflowResumeStepIndex,
     workflowResumeUpdatedAt,

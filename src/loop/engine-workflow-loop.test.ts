@@ -533,6 +533,117 @@ test("managed codex shared-session command shell-quotes prompt safely across rou
   }
 });
 
+test("workflow session controls can force a fresh codex conversation for each step", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-session-step-"));
+  const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
+  await scheduler.init();
+  try {
+    const calls: Array<{ cmd: string; envPatch?: Record<string, string> }> = [];
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async (command, _cwd, _timeoutSec, envPatch) => {
+        calls.push({ cmd: command, envPatch });
+        return {
+          status: "success",
+          exitCode: 0,
+          stdout: "ok",
+          stderr: "",
+          error: null
+        };
+      }
+    });
+
+    const task = await scheduler.createTask({
+      name: "wf-session-each-step",
+      runner: "custom",
+      prompt: "shared prompt",
+      command: 'codex exec "{prompt}"',
+      workflowSteps: [
+        { name: "step-1", enabled: true },
+        { name: "step-2", enabled: true }
+      ],
+      workflowNewSessionPerStep: true,
+      workflowNewSessionPerRound: true,
+      workflowFullAccess: false,
+      intervalSec: 300
+    });
+
+    const run = await scheduler.runNow(task.id);
+    assert.equal(run.status, "success");
+    assert.equal(calls.length, 2);
+    assert.match(calls[0].cmd, /^codex exec --full-auto /);
+    assert.match(calls[1].cmd, /^codex exec --full-auto /);
+    assert.doesNotMatch(calls[1].cmd, /resume --last --all/);
+    assert.equal(calls[0].envPatch, undefined);
+    assert.equal(calls[1].envPatch, undefined);
+  } finally {
+    scheduler.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("workflow session controls can reset codex conversation on each new round", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-session-round-"));
+  const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
+  await scheduler.init();
+  try {
+    const calls: Array<{ cmd: string; envPatch?: Record<string, string> }> = [];
+    let callCount = 0;
+    setRuntimeExecutionOverrides(scheduler, {
+      runCommand: async (command, _cwd, _timeoutSec, envPatch) => {
+        calls.push({ cmd: command, envPatch });
+        callCount += 1;
+        if (callCount >= 4) {
+          return {
+            status: "failed",
+            exitCode: 9,
+            stdout: "",
+            stderr: "stop after verifying second round",
+            error: "stop after verifying second round"
+          };
+        }
+        return {
+          status: "success",
+          exitCode: 0,
+          stdout: "ok",
+          stderr: "",
+          error: null
+        };
+      }
+    });
+
+    const task = await scheduler.createTask({
+      name: "wf-session-each-round",
+      runner: "custom",
+      prompt: "shared prompt",
+      command: 'codex exec "{prompt}"',
+      workflowSteps: [
+        { name: "step-1", enabled: true },
+        { name: "step-2", enabled: true }
+      ],
+      workflowLoopFromStart: true,
+      workflowNewSessionPerStep: false,
+      workflowNewSessionPerRound: true,
+      workflowFullAccess: false,
+      intervalSec: 300
+    });
+
+    const run = await scheduler.runNow(task.id);
+    assert.equal(run.status, "failed");
+    assert.equal(calls.length, 4);
+    assert.match(calls[0].cmd, /^codex exec --full-auto /);
+    assert.match(calls[1].cmd, /^codex exec resume --last --all --full-auto /);
+    assert.match(calls[2].cmd, /^codex exec --full-auto /);
+    assert.doesNotMatch(calls[2].cmd, /resume --last --all/);
+    assert.match(calls[3].cmd, /^codex exec resume --last --all --full-auto /);
+    assert.notEqual(calls[0].envPatch?.CODEX_HOME, undefined);
+    assert.notEqual(calls[2].envPatch?.CODEX_HOME, undefined);
+    assert.notEqual(calls[0].envPatch?.CODEX_HOME, calls[2].envPatch?.CODEX_HOME);
+  } finally {
+    scheduler.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("default claude_code runner shell-quotes prompt safely", async () => {
   const dir = await mkdtemp(join(tmpdir(), "agent-lens-loop-workflow-claude-quote-"));
   const scheduler = new LoopScheduler(join(dir, "loop-tasks.json"));
@@ -707,6 +818,8 @@ test("workflow shared session defaults to enabled and full-access defaults to di
       command: 'codex exec "{prompt}"',
       intervalSec: 300
     });
+    assert.equal(task.workflowNewSessionPerStep, false);
+    assert.equal(task.workflowNewSessionPerRound, false);
     assert.equal(task.workflowSharedSession, true);
     assert.equal(task.workflowFullAccess, false);
   } finally {

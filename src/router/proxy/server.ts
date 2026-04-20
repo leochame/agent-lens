@@ -1,7 +1,7 @@
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { URL } from "node:url";
 import { dirname, join } from "node:path";
-import { AppConfig } from "../provider/types";
+import { AppConfig, RoutingDecision } from "../provider/types";
 import { resolveRouting } from "../provider/router";
 import { LoggerService } from "../../log/service/logger";
 import { forwardRequest } from "./forward";
@@ -818,6 +818,7 @@ export async function startServer(config: AppConfig, configPath: string): Promis
 
   const server = createServer(async (req, res) => {
     const requestId = newRequestId();
+    let decision: RoutingDecision | null = null;
 
     try {
       const homeHandled = await handleHome(req, res);
@@ -836,7 +837,7 @@ export async function startServer(config: AppConfig, configPath: string): Promis
       }
 
       const body = await collectBody(req);
-      const decision = resolveRouting(state.config, req);
+      decision = resolveRouting(state.config, req);
       const contentType = Array.isArray(req.headers["content-type"])
         ? req.headers["content-type"][0]
         : req.headers["content-type"];
@@ -847,6 +848,7 @@ export async function startServer(config: AppConfig, configPath: string): Promis
         method: req.method ?? "GET",
         path: req.url ?? "/",
         provider: decision.providerName,
+        apiFormat: decision.apiFormat,
         headers: req.headers,
         rawBody: body,
         contentType
@@ -873,6 +875,7 @@ export async function startServer(config: AppConfig, configPath: string): Promis
         method: req.method ?? "GET",
         path: req.url ?? "/",
         provider: decision.providerName,
+        apiFormat: decision.apiFormat,
         statusCode: response.statusCode,
         headers: response.headers,
         rawBody: response.responseBody,
@@ -895,6 +898,7 @@ export async function startServer(config: AppConfig, configPath: string): Promis
         method: req.method ?? "GET",
         path: req.url ?? "/",
         provider: "proxy_error",
+        apiFormat: decision?.apiFormat,
         statusCode: code,
         headers: {},
         rawBody: Buffer.from(JSON.stringify({ error: message }), "utf8"),

@@ -127,7 +127,8 @@ class FakeDocument {
       || id === "advancedMode"
       || id === "maxConcurrentRuns"
       || id === "workflowLoopFromStart"
-      || id === "workflowSharedSession"
+      || id === "workflowNewSessionPerStep"
+      || id === "workflowNewSessionPerRound"
       || id === "workflowFullAccess"
     ) {
       return new FakeSelectElement(id);
@@ -315,16 +316,16 @@ this.__loopUi__ = { fillFormFromTask, applyDynamicVisibility };`,
 
 test("loop page relies on the shared sidebar for loop routing", () => {
   const html = renderLoopHtml();
-  assert.match(html, /href="\/"/);
+  assert.match(html, /href="\/__home"/);
   assert.match(html, /href="\/__router"/);
   assert.match(html, /href="\/__log"/);
   assert.match(html, /href="\/__loop"/);
   assert.match(html, /class="workbench-link active" href="\/__loop"/);
   assert.match(html, /Workflow \/ Loop/);
   assert.doesNotMatch(html, /aria-label="页面入口"/);
-  assert.match(html, /class="hero-grid"/);
+  assert.match(html, /id="msg"/);
   assert.match(html, /运行概览/);
-  assert.match(html, /以 workflow 为主，单命令模式为兼容入口/);
+  assert.doesNotMatch(html, /以 workflow 为主，单命令模式为兼容入口/);
   assert.doesNotMatch(html, /侧边栏负责切换页面/);
 });
 

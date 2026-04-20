@@ -42,6 +42,7 @@ test("forwardRequest forwards body and inject auth header", async () => {
     req.on("end", async () => {
       const decision: RoutingDecision = {
         providerName: "openai",
+        apiFormat: "openai",
         provider: {
           baseURL: `http://127.0.0.1:${upstreamPort}`,
           authMode: { type: "inject", header: "Authorization", value: "token", valuePrefix: "Bearer " },
@@ -113,6 +114,7 @@ test("forwardRequest rejects when upstream response aborts mid-stream", async ()
     req.on("end", async () => {
       const decision: RoutingDecision = {
         providerName: "openai",
+        apiFormat: "openai",
         provider: { baseURL: `http://127.0.0.1:${upstreamPort}` },
         targetPathWithQuery: req.url || "/"
       };
@@ -187,6 +189,7 @@ test("forwardRequest retries once when upstream responds with retryable error", 
     req.on("end", async () => {
       const decision: RoutingDecision = {
         providerName: "openai",
+        apiFormat: "openai",
         provider: { baseURL: `http://127.0.0.1:${upstreamPort}` },
         targetPathWithQuery: req.url || "/"
       };

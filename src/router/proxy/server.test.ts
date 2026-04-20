@@ -186,6 +186,7 @@ test("startServer forwards proxied request bodies larger than 10 MiB", async () 
     await started.close();
     started.shutdownLoop();
     await closeServer(upstream);
+    await new Promise((resolve) => setTimeout(resolve, 100));
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -347,6 +348,137 @@ test("startServer keeps GET / available for proxied upstream traffic", async () 
     await started.close();
     started.shutdownLoop();
     await closeServer(upstream);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("startServer strips configured Claude route prefixes before forwarding upstream", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-server-test-"));
+  const upstreamPort = await reservePort();
+  const proxyPort = await reservePort();
+  let capturedPath = "";
+  const upstream = http.createServer((req, res) => {
+    capturedPath = req.url ?? "";
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ ok: true, path: capturedPath }));
+  });
+  await new Promise<void>((resolve) => upstream.listen(upstreamPort, "127.0.0.1", () => resolve()));
+  const started = await startServer(
+    {
+      listen: { host: "127.0.0.1", port: proxyPort },
+      routing: {
+        defaultProvider: "openai",
+        routes: [
+          { pathPrefix: "/v1", provider: "openai", apiFormat: "openai", stripPrefix: true },
+          { pathPrefix: "/claude", provider: "anthropic", apiFormat: "anthropic", stripPrefix: true }
+        ]
+      },
+      providers: {
+        openai: { baseURL: `http://127.0.0.1:${upstreamPort}` },
+        anthropic: { baseURL: `http://127.0.0.1:${upstreamPort}` }
+      },
+      logging: { filePath: "logs/req.log", archiveRequests: false }
+    },
+    join(dir, "config/default.yaml")
+  );
+
+  try {
+    const response = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
+      const req = http.request(
+        {
+          method: "POST",
+          host: "127.0.0.1",
+          port: proxyPort,
+          path: "/claude/v1/messages?beta=1",
+          headers: { "content-type": "application/json" }
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+          res.on("end", () => {
+            resolve({
+              statusCode: res.statusCode ?? 0,
+              body: Buffer.concat(chunks).toString("utf8")
+            });
+          });
+        }
+      );
+      req.on("error", reject);
+      req.end(JSON.stringify({ message: "hello" }));
+    });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(capturedPath, "/v1/messages?beta=1");
+    assert.match(response.body, /"path":"\/v1\/messages\?beta=1"/);
+  } finally {
+    await started.close();
+    started.shutdownLoop();
+    await closeServer(upstream);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("startServer strips configured OpenAI route prefixes before forwarding upstream", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-server-test-"));
+  const upstreamPort = await reservePort();
+  const proxyPort = await reservePort();
+  let capturedPath = "";
+  const upstream = http.createServer((req, res) => {
+    capturedPath = req.url ?? "";
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ ok: true, path: capturedPath }));
+  });
+  await new Promise<void>((resolve) => upstream.listen(upstreamPort, "127.0.0.1", () => resolve()));
+  const started = await startServer(
+    {
+      listen: { host: "127.0.0.1", port: proxyPort },
+      routing: {
+        defaultProvider: "openai",
+        routes: [
+          { pathPrefix: "/v1", provider: "openai", apiFormat: "openai", stripPrefix: true }
+        ]
+      },
+      providers: {
+        openai: { baseURL: `http://127.0.0.1:${upstreamPort}` }
+      },
+      logging: { filePath: "logs/req.log", archiveRequests: false }
+    },
+    join(dir, "config/default.yaml")
+  );
+
+  try {
+    const response = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
+      const req = http.request(
+        {
+          method: "POST",
+          host: "127.0.0.1",
+          port: proxyPort,
+          path: "/v1/chat/completions?stream=true",
+          headers: { "content-type": "application/json" }
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+          res.on("end", () => {
+            resolve({
+              statusCode: res.statusCode ?? 0,
+              body: Buffer.concat(chunks).toString("utf8")
+            });
+          });
+        }
+      );
+      req.on("error", reject);
+      req.end(JSON.stringify({ message: "hello" }));
+    });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(capturedPath, "/chat/completions?stream=true");
+    assert.match(response.body, /"path":"\/chat\/completions\?stream=true"/);
+  } finally {
+    await started.close();
+    started.shutdownLoop();
+    await closeServer(upstream);
+    await new Promise((resolve) => setTimeout(resolve, 100));
     await rm(dir, { recursive: true, force: true });
   }
 });

@@ -27,15 +27,9 @@ function renderHomeCanvas(): string {
     <section class="hero-stage" aria-label="Home 主视觉">
       <div class="hero-header">
         <span class="hero-signature">AgentLens</span>
-        <span class="hero-whisper">Proxy Observatory</span>
       </div>
       <div class="hero-copy">
-        <p class="hero-kicker">不是更多面板，而是一块能看进去的界面。</p>
-        <h1>
-          <span>让每一次</span>
-          <span>请求被看见</span>
-        </h1>
-        <p class="hero-caption">路由、归档、循环，在同一束视线里慢慢展开。</p>
+        <h1>Control Surface</h1>
       </div>
       <div class="hero-installation" aria-hidden="true">
         <div class="lens-core">
@@ -49,15 +43,11 @@ function renderHomeCanvas(): string {
           <span class="lens-label lens-label-loop">Loop</span>
         </div>
       </div>
-      <div class="hero-note">
-        <p>少一点解释，多一点感知。</p>
-        <span class="hero-note-line" aria-hidden="true"></span>
-      </div>
     </section>
     <section class="path-gallery" aria-label="首页路径">
-      ${renderPathCard("/__router", "路由", "Router", "校准入口与上游", "router-card")}
-      ${renderPathCard("/__log", "归档", "Log", "把原始请求摊开", "log-card")}
-      ${renderPathCard("/__loop", "循环", "Loop", "让流程继续生长", "loop-card")}
+      ${renderPathCard("/__router", "路由", "Router", "", "router-card")}
+      ${renderPathCard("/__log", "归档", "Log", "", "log-card")}
+      ${renderPathCard("/__loop", "循环", "Loop", "", "loop-card")}
     </section>
   </div>`;
 }
@@ -70,15 +60,15 @@ export function renderHomeHtml(): string {
       .workbench-main {
         padding: 0;
         background:
-          radial-gradient(circle at 14% 18%, rgba(255, 246, 233, 0.96), rgba(255, 246, 233, 0) 32%),
-          radial-gradient(circle at 88% 12%, rgba(138, 168, 158, 0.18), rgba(138, 168, 158, 0) 28%),
-          linear-gradient(180deg, #f2eadf, #ddd2c3 72%, #d3c6b6);
+          radial-gradient(circle at 14% 18%, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 32%),
+          radial-gradient(circle at 88% 12%, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 28%),
+          linear-gradient(180deg, #121212, #090909 72%, #040404);
       }
       .workbench-main::before {
         background:
-          linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent 22%),
-          linear-gradient(90deg, rgba(43, 33, 22, 0.08), transparent 18%),
-          radial-gradient(circle at 78% 24%, rgba(255, 255, 255, 0.54), transparent 28%);
+          linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 22%),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.04), transparent 18%),
+          radial-gradient(circle at 78% 24%, rgba(255, 255, 255, 0.05), transparent 28%);
       }
       .page-shell.home-shell {
         min-height: 100%;
@@ -90,7 +80,7 @@ export function renderHomeHtml(): string {
         gap: 24px;
         min-height: calc(100vh - 74px);
         padding: clamp(24px, 4vw, 42px);
-        color: #16110e;
+        color: #f2f2f2;
       }
       .hero-stage,
       .path-card {
@@ -99,25 +89,25 @@ export function renderHomeHtml(): string {
       }
       .hero-stage {
         display: grid;
-        grid-template-rows: auto auto 1fr auto;
+        grid-template-rows: auto 1fr 1fr;
         gap: clamp(18px, 3vw, 28px);
         min-height: clamp(520px, 72vh, 780px);
         padding: clamp(24px, 3vw, 34px);
-        border: 1px solid rgba(22, 17, 14, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 34px;
         background:
-          linear-gradient(150deg, rgba(255, 255, 255, 0.64), rgba(255, 255, 255, 0.18) 42%, rgba(0, 0, 0, 0.04) 100%),
-          linear-gradient(180deg, rgba(255, 250, 244, 0.82), rgba(239, 231, 221, 0.72));
+          linear-gradient(150deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03) 42%, rgba(0, 0, 0, 0.2) 100%),
+          linear-gradient(180deg, rgba(24, 24, 24, 0.92), rgba(12, 12, 12, 0.94));
         box-shadow:
-          inset 0 1px 0 rgba(255, 255, 255, 0.82),
-          0 36px 90px rgba(54, 38, 19, 0.12);
+          inset 0 1px 0 rgba(255, 255, 255, 0.06),
+          0 36px 90px rgba(0, 0, 0, 0.28);
       }
       .hero-stage::before {
         content: "";
         position: absolute;
         inset: 18px;
         border-radius: 28px;
-        border: 1px solid rgba(22, 17, 14, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.05);
         pointer-events: none;
       }
       .hero-stage::after {
@@ -128,25 +118,19 @@ export function renderHomeHtml(): string {
         width: 52%;
         aspect-ratio: 1;
         border-radius: 999px;
-        background: radial-gradient(circle, rgba(155, 93, 58, 0.26), rgba(155, 93, 58, 0) 70%);
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 70%);
         filter: blur(14px);
       }
       .hero-header,
       .hero-copy,
       .hero-installation,
-      .hero-note {
-        position: relative;
-        z-index: 1;
-      }
-      .hero-header,
-      .hero-note {
+      .hero-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 18px;
       }
       .hero-signature,
-      .hero-whisper,
       .path-card-kicker {
         font-family: "Avenir Next", "Helvetica Neue", "PingFang SC", "Noto Sans SC", sans-serif;
         font-size: 10px;
@@ -154,51 +138,23 @@ export function renderHomeHtml(): string {
         letter-spacing: 0.2em;
         text-transform: uppercase;
       }
-      .hero-signature {
-        color: rgba(22, 17, 14, 0.72);
-      }
-      .hero-whisper {
-        color: rgba(22, 17, 14, 0.42);
-      }
+      .hero-signature { color: rgba(255, 255, 255, 0.72); }
       .hero-copy {
         display: grid;
-        gap: 18px;
+        align-content: start;
         max-width: 680px;
       }
-      .hero-kicker,
-      .hero-caption,
-      .hero-note p,
       .path-card p {
         margin: 0;
         font-family: "Avenir Next", "Helvetica Neue", "PingFang SC", "Noto Sans SC", sans-serif;
       }
-      .hero-kicker {
-        max-width: 360px;
-        font-size: 13px;
-        line-height: 1.7;
-        color: rgba(22, 17, 14, 0.58);
-      }
       .hero-copy h1 {
         margin: 0;
-        display: grid;
-        gap: 4px;
-        font-family: "Iowan Old Style", "Baskerville", "Times New Roman", "Songti SC", "STSong", serif;
+        font-family: "Space Grotesk", "IBM Plex Sans", "PingFang SC", "Noto Sans SC", sans-serif;
         font-size: clamp(68px, 10vw, 146px);
-        line-height: 0.88;
-        letter-spacing: -0.08em;
-        color: #16110e;
-      }
-      .hero-copy h1 span {
-        display: block;
-      }
-      .hero-copy h1 span:last-child {
-        margin-left: clamp(24px, 8vw, 132px);
-      }
-      .hero-caption {
-        max-width: 420px;
-        font-size: 15px;
-        line-height: 1.8;
-        color: rgba(22, 17, 14, 0.66);
+        line-height: 0.92;
+        letter-spacing: -0.06em;
+        color: #f5f5f5;
       }
       .hero-installation {
         display: grid;
@@ -218,7 +174,7 @@ export function renderHomeHtml(): string {
       .lens-ring {
         inset: 50%;
         transform: translate(-50%, -50%);
-        border: 1px solid rgba(22, 17, 14, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.12);
       }
       .lens-ring-a {
         width: 84%;
@@ -228,19 +184,19 @@ export function renderHomeHtml(): string {
       .lens-ring-b {
         width: 56%;
         height: 56%;
-        border-color: rgba(22, 17, 14, 0.18);
+        border-color: rgba(255, 255, 255, 0.18);
       }
       .lens-ring-c {
         width: 18%;
         height: 18%;
-        border-color: rgba(22, 17, 14, 0.26);
-        background: radial-gradient(circle, rgba(255, 255, 255, 0.82), rgba(226, 214, 198, 0.18));
+        border-color: rgba(255, 255, 255, 0.26);
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.08));
         box-shadow:
-          0 0 0 14px rgba(255, 255, 255, 0.24),
-          0 24px 48px rgba(61, 44, 22, 0.12);
+          0 0 0 14px rgba(255, 255, 255, 0.08),
+          0 24px 48px rgba(0, 0, 0, 0.24);
       }
       .lens-pulse {
-        background: radial-gradient(circle, rgba(86, 119, 105, 0.28), rgba(86, 119, 105, 0));
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0));
         filter: blur(10px);
       }
       .lens-pulse-a {
@@ -255,7 +211,7 @@ export function renderHomeHtml(): string {
         bottom: 8%;
         width: 142px;
         height: 142px;
-        background: radial-gradient(circle, rgba(155, 93, 58, 0.24), rgba(155, 93, 58, 0));
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0));
         animation: drift 20s ease-in-out infinite reverse;
       }
       .lens-label {
@@ -265,7 +221,7 @@ export function renderHomeHtml(): string {
         font-weight: 700;
         letter-spacing: 0.12em;
         text-transform: uppercase;
-        color: rgba(22, 17, 14, 0.58);
+        color: rgba(255, 255, 255, 0.58);
       }
       .lens-label::before {
         content: "";
@@ -273,7 +229,7 @@ export function renderHomeHtml(): string {
         top: 50%;
         width: 54px;
         height: 1px;
-        background: linear-gradient(90deg, rgba(22, 17, 14, 0.34), rgba(22, 17, 14, 0));
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0));
       }
       .lens-label-router {
         top: 14%;
@@ -297,18 +253,6 @@ export function renderHomeHtml(): string {
       .lens-label-loop::before {
         right: calc(100% + 10px);
       }
-      .hero-note p {
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.22em;
-        text-transform: uppercase;
-        color: rgba(22, 17, 14, 0.5);
-      }
-      .hero-note-line {
-        flex: 1;
-        height: 1px;
-        background: linear-gradient(90deg, rgba(22, 17, 14, 0.3), rgba(22, 17, 14, 0));
-      }
       .path-gallery {
         display: grid;
         gap: 18px;
@@ -321,14 +265,14 @@ export function renderHomeHtml(): string {
         align-items: center;
         min-height: 176px;
         padding: 24px 22px;
-        border: 1px solid rgba(22, 17, 14, 0.09);
+        border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 28px;
         text-decoration: none;
-        color: #16110e;
+        color: #f2f2f2;
         background:
-          linear-gradient(155deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.14) 46%, rgba(0, 0, 0, 0.04)),
-          rgba(251, 246, 239, 0.54);
-        box-shadow: 0 24px 56px rgba(61, 44, 22, 0.1);
+          linear-gradient(155deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03) 46%, rgba(0, 0, 0, 0.18)),
+          rgba(20, 20, 20, 0.9);
+        box-shadow: 0 24px 56px rgba(0, 0, 0, 0.22);
         transition:
           transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
           box-shadow 280ms ease,
@@ -341,7 +285,7 @@ export function renderHomeHtml(): string {
         position: absolute;
         inset: 14px;
         border-radius: 22px;
-        border: 1px solid rgba(22, 17, 14, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.05);
         pointer-events: none;
       }
       .path-card::after {
@@ -352,12 +296,12 @@ export function renderHomeHtml(): string {
         width: 180px;
         height: 180px;
         border-radius: 999px;
-        background: radial-gradient(circle, rgba(22, 17, 14, 0.08), rgba(22, 17, 14, 0));
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0));
       }
       .path-card:hover {
         transform: translateY(-6px) rotate(-0.4deg);
-        border-color: rgba(22, 17, 14, 0.16);
-        box-shadow: 0 34px 78px rgba(61, 44, 22, 0.16);
+        border-color: rgba(255, 255, 255, 0.16);
+        box-shadow: 0 34px 78px rgba(0, 0, 0, 0.28);
       }
       .path-card:nth-child(2) {
         animation-delay: 70ms;
@@ -370,16 +314,16 @@ export function renderHomeHtml(): string {
         width: 58px;
         height: 58px;
         border-radius: 18px;
-        border: 1px solid rgba(22, 17, 14, 0.09);
-        background: rgba(255, 252, 247, 0.68);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.04);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
       }
       .path-card-glyph span {
         position: absolute;
         inset: 50%;
         display: block;
         border-radius: 999px;
-        border: 1px solid rgba(22, 17, 14, 0.16);
+        border: 1px solid rgba(255, 255, 255, 0.16);
         transform: translate(-50%, -50%);
       }
       .path-card-glyph span:nth-child(1) {
@@ -393,37 +337,25 @@ export function renderHomeHtml(): string {
       .path-card-glyph span:nth-child(3) {
         width: 10px;
         height: 10px;
-        background: rgba(22, 17, 14, 0.72);
-        border-color: rgba(22, 17, 14, 0.72);
-      }
-      .router-card .path-card-glyph {
-        background: linear-gradient(180deg, rgba(244, 233, 224, 0.96), rgba(232, 221, 211, 0.76));
-      }
-      .log-card .path-card-glyph {
-        background: linear-gradient(180deg, rgba(234, 242, 238, 0.96), rgba(220, 233, 227, 0.76));
-      }
-      .loop-card .path-card-glyph {
-        background: linear-gradient(180deg, rgba(244, 236, 226, 0.96), rgba(232, 220, 205, 0.76));
+        background: rgba(255, 255, 255, 0.84);
+        border-color: rgba(255, 255, 255, 0.84);
       }
       .path-card-body {
         display: grid;
         gap: 10px;
       }
       .path-card-kicker {
-        color: rgba(22, 17, 14, 0.48);
+        color: rgba(255, 255, 255, 0.46);
       }
       .path-card h2 {
         margin: 0;
-        font-family: "Iowan Old Style", "Baskerville", "Times New Roman", "Songti SC", "STSong", serif;
+        font-family: "Space Grotesk", "IBM Plex Sans", "PingFang SC", "Noto Sans SC", sans-serif;
         font-size: clamp(32px, 4vw, 48px);
-        line-height: 0.96;
-        letter-spacing: -0.06em;
+        line-height: 1;
+        letter-spacing: -0.04em;
       }
       .path-card p {
-        max-width: 16ch;
-        font-size: 14px;
-        line-height: 1.75;
-        color: rgba(22, 17, 14, 0.64);
+        display: none;
       }
       .path-card-arrow {
         position: relative;
@@ -434,15 +366,15 @@ export function renderHomeHtml(): string {
         width: 42px;
         height: 42px;
         border-radius: 999px;
-        border: 1px solid rgba(22, 17, 14, 0.1);
-        background: rgba(255, 251, 247, 0.76);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.04);
         font-size: 20px;
-        color: #16110e;
+        color: #f5f5f5;
         transition: transform 220ms ease, background 220ms ease;
       }
       .path-card:hover .path-card-arrow {
         transform: translate(2px, -2px);
-        background: rgba(255, 255, 255, 0.92);
+        background: rgba(255, 255, 255, 0.08);
       }
       @keyframes rise {
         from {
@@ -491,16 +423,12 @@ export function renderHomeHtml(): string {
           padding: 20px;
           border-radius: 26px;
         }
-        .hero-header,
-        .hero-note {
+        .hero-header {
           flex-direction: column;
           align-items: flex-start;
         }
         .hero-copy h1 {
           font-size: clamp(54px, 18vw, 88px);
-        }
-        .hero-copy h1 span:last-child {
-          margin-left: clamp(12px, 6vw, 54px);
         }
         .hero-installation {
           min-height: 260px;

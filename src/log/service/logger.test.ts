@@ -201,6 +201,49 @@ test("LoggerService classifies OpenAI image-style routes as openai", async () =>
   assert.deepEqual(capturedFormats, ["openai"]);
 });
 
+test("LoggerService honors explicit apiFormat overrides for Claude-prefixed routes", async () => {
+  const cfg: LoggingConfig = {
+    filePath: "/tmp/agent-lens-logger-test.log",
+    archiveRequests: false
+  };
+  const logger = new LoggerService(cfg) as unknown as {
+    logRequest: (payload: {
+      ts: string;
+      requestId: string;
+      method: string;
+      path: string;
+      provider: string;
+      apiFormat?: "openai" | "anthropic" | "unknown";
+      headers: Record<string, string>;
+      rawBody: Buffer;
+      contentType?: string;
+    }) => void;
+    writeChain: Promise<void>;
+    appendRecord: (record: { apiFormat?: string }) => Promise<void>;
+    appendArchiveRecord: (record: unknown, body: Buffer, contentType?: string) => Promise<void>;
+  };
+  const capturedFormats: string[] = [];
+  logger.appendRecord = async (record) => {
+    capturedFormats.push(String(record.apiFormat || ""));
+  };
+  logger.appendArchiveRecord = async () => {};
+
+  logger.logRequest({
+    ts: new Date().toISOString(),
+    requestId: "req-claude-route-1",
+    method: "POST",
+    path: "/claude/v1/messages",
+    provider: "anyrouter",
+    apiFormat: "anthropic",
+    headers: {},
+    rawBody: Buffer.from("{}", "utf8"),
+    contentType: "application/json"
+  });
+
+  await logger.writeChain;
+  assert.deepEqual(capturedFormats, ["anthropic"]);
+});
+
 test("LoggerService preserves archived history across more than 100 request pairs", async () => {
   const dir = await mkdtemp(join(tmpdir(), "agent-lens-logger-retention-"));
   const cfg: LoggingConfig = {

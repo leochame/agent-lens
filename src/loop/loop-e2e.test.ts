@@ -193,12 +193,14 @@ class FakeDocument {
       || id === "advancedMode"
       || id === "maxConcurrentRuns"
       || id === "workflowLoopFromStart"
-      || id === "workflowSharedSession"
+      || id === "workflowNewSessionPerStep"
+      || id === "workflowNewSessionPerRound"
       || id === "workflowFullAccess"
       || id === "modalRunner"
       || id === "modalMode"
       || id === "modalWorkflowLoop"
-      || id === "modalWorkflowSession"
+      || id === "modalWorkflowSessionPerStep"
+      || id === "modalWorkflowSessionPerRound"
       || id === "modalWorkflowAccess"
     ) {
       return new FakeSelectElement(id);

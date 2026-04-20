@@ -82,6 +82,8 @@ type LoopRuntimeTaskInput = {
   workflowSteps: WorkflowStep[];
   workflowCarryContext: boolean;
   workflowLoopFromStart: boolean;
+  workflowNewSessionPerStep?: boolean;
+  workflowNewSessionPerRound?: boolean;
   workflowSharedSession: boolean;
   workflowFullAccess: boolean;
 };
@@ -197,7 +199,7 @@ function shouldUseManagedCodexSession(
   step: WorkflowStep,
   runner: LoopRunner
 ): boolean {
-  if (!task.workflowSharedSession) {
+  if (task.workflowNewSessionPerStep) {
     return false;
   }
   if (runner === "codex" && !step.command && !task.command) {
@@ -257,8 +259,12 @@ function toSafeTaskPathSegment(taskId: string): string {
     || "task";
 }
 
-function codexSessionHomeForTask(taskId: string): string {
-  return join(process.cwd(), ".agentlens", "codex-sessions", toSafeTaskPathSegment(taskId));
+function codexSessionHomeForTask(taskId: string, round: number): string {
+  const base = join(process.cwd(), ".agentlens", "codex-sessions", toSafeTaskPathSegment(taskId));
+  if (round <= 1) {
+    return base;
+  }
+  return join(base, `round-${String(round)}`);
 }
 
 function mapToolResult(result: { success: boolean; output: string; error: string | null }): LoopCommandExecutionResult {
@@ -651,15 +657,19 @@ export class MinimalLoopRuntime {
     let error: string | null = null;
     let firstFailure: LoopRuntimeExecutionFirstFailure | null = null;
     let codexSharedSessionStarted = false;
-    const codexSessionHome = req.task.workflowSharedSession ? codexSessionHomeForTask(req.task.id) : null;
-
-    if (codexSessionHome) {
-      await mkdir(codexSessionHome, { recursive: true });
-    }
-
     let round = 1;
     let roundStart = startIndex;
     while (true) {
+      if (req.task.workflowNewSessionPerRound) {
+        codexSharedSessionStarted = false;
+      }
+      const codexSessionHome = req.task.workflowNewSessionPerStep
+        ? null
+        : codexSessionHomeForTask(req.task.id, req.task.workflowNewSessionPerRound ? round : 1);
+
+      if (codexSessionHome) {
+        await mkdir(codexSessionHome, { recursive: true });
+      }
       let roundHadFailure = false;
       req.callbacks.onEvent("info", `round ${round} started`);
       for (let i = roundStart; i < steps.length; i += 1) {

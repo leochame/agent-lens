@@ -30,6 +30,9 @@ export type LoopTask = {
   workflowSteps: WorkflowStep[];
   workflowCarryContext: boolean;
   workflowLoopFromStart: boolean;
+  workflowNewSessionPerStep?: boolean;
+  workflowNewSessionPerRound?: boolean;
+  // Legacy compatibility field. Newer tasks should use the explicit per-step/per-round flags.
   workflowSharedSession: boolean;
   workflowFullAccess: boolean;
   workflowResumeStepIndex: number | null;
@@ -96,6 +99,8 @@ export type CreateLoopTaskInput = {
   workflowSteps?: WorkflowStepInputCompat[] | string;
   workflowCarryContext?: boolean;
   workflowLoopFromStart?: boolean;
+  workflowNewSessionPerStep?: boolean;
+  workflowNewSessionPerRound?: boolean;
   workflowSharedSession?: boolean;
   workflowFullAccess?: boolean;
   intervalSec: number;

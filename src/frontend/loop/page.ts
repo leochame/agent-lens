@@ -1,20 +1,4 @@
-import { renderHeroSection } from "../shared/components";
 import { WORKBENCH_LAYOUT_STYLES, renderWorkbenchLayout } from "../shared/shell";
-
-const LOOP_HERO_HTML = renderHeroSection({
-  cardClassName: "card",
-  eyebrow: "Loop",
-  title: "Workflow Builder",
-  description: "以 workflow 为主，单命令模式为兼容入口。先搭步骤流，再观察运行中、队列和历史。",
-  pills: ["Workflow / Queue / Runs / History"],
-  asideBlocks: [
-    {
-      title: "工作顺序",
-      body: "先搭建 workflow 或兼容命令任务，再查看运行状态、排队情况和历史记录。"
-    }
-  ],
-  asideContent: `<div id="msg" class="notice muted"></div>`
-});
 
 export function renderLoopHtml(): string {
   return `<!doctype html>
@@ -30,14 +14,21 @@ export function renderLoopHtml(): string {
       --bg-2: #111111;
       --card: #171717;
       --text: #ececec;
-      --muted: rgba(194, 194, 194, 0.74);
+      --muted: rgba(205, 214, 226, 0.72);
       --line: rgba(255, 255, 255, 0.11);
       --line-strong: rgba(255, 255, 255, 0.2);
-      --accent: #7d7d7d;
-      --accent-2: #9a9a9a;
-      --ok: #d3d3d3;
-      --warn: #bebebe;
-      --error: #999999;
+      --accent: #5fb3ff;
+      --accent-2: #84f0cf;
+      --ok: #73e2a7;
+      --warn: #f4c95d;
+      --error: #ff7b72;
+      --running: #67b7ff;
+      --queued: #c79bff;
+      --risk-bg: rgba(86, 54, 23, 0.52);
+      --ok-bg: rgba(19, 71, 48, 0.5);
+      --running-bg: rgba(18, 52, 94, 0.56);
+      --queued-bg: rgba(58, 34, 88, 0.56);
+      --error-bg: rgba(98, 27, 33, 0.56);
       --radius: 14px;
       --shadow: 0 20px 48px rgba(0, 0, 0, 0.28);
     }
@@ -52,7 +43,15 @@ export function renderLoopHtml(): string {
       color: var(--text);
       line-height: 1.45;
     }
-    .page-shell { display: grid; gap: 14px; }
+    .wrap {
+      width: min(75vw, 1560px);
+      margin: 14px auto 30px;
+    }
+    .page-shell {
+      display: grid;
+      gap: 18px;
+      min-width: 0;
+    }
     .workbench-main {
       background:
         linear-gradient(180deg, rgba(16, 16, 16, 0.96), rgba(8, 8, 8, 0.98)),
@@ -67,9 +66,9 @@ export function renderLoopHtml(): string {
     }
     .overview-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .overview-card {
-      border-color: #d9e3f4;
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(243, 248, 255, 0.92));
-      box-shadow: 0 12px 28px rgba(17, 35, 70, 0.06);
+      border-color: var(--line);
+      background: linear-gradient(180deg, rgba(28, 28, 28, 0.96), rgba(16, 16, 16, 0.98));
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
     }
     .section-stack { display: grid; gap: 14px; }
     .dashboard-grid {
@@ -96,22 +95,6 @@ export function renderLoopHtml(): string {
     h1 { margin: 0 0 6px; font-size: 34px; letter-spacing: 0.2px; line-height: 1.06; }
     h2 { font-size: 19px; letter-spacing: 0.1px; }
     .muted { color: var(--muted); font-size: 13px; }
-    .hero {
-      padding: 22px;
-      background:
-        linear-gradient(140deg, rgba(255, 255, 255, 0.09), rgba(39, 39, 39, 0.12) 38%, rgba(15, 15, 15, 0.95) 78%),
-        var(--card);
-    }
-    .hero-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.95fr);
-      gap: 18px;
-      align-items: start;
-    }
-    .hero-copy {
-      display: grid;
-      gap: 12px;
-    }
     .eyebrow {
       display: inline-flex;
       width: fit-content;
@@ -127,17 +110,6 @@ export function renderLoopHtml(): string {
       padding: 7px 10px;
       text-transform: uppercase;
     }
-    .hero-description {
-      max-width: 760px;
-      font-size: 15px;
-      line-height: 1.65;
-      color: #d8d8d8;
-    }
-    .hero-meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
     .meta-pill {
       display: inline-flex;
       align-items: center;
@@ -148,33 +120,13 @@ export function renderLoopHtml(): string {
       color: #d9d9d9;
       font-size: 12px;
     }
-    .hero-side {
-      display: grid;
-      gap: 12px;
-    }
-    .hero-side-card {
-      border: 1px solid rgba(145, 153, 143, 0.16);
-      border-radius: 14px;
-      background: rgba(20, 24, 22, 0.86);
-      padding: 14px;
-    }
-    .hero-side-title {
-      margin: 0 0 6px;
-      font-size: 14px;
-      color: #ececec;
-    }
-    .hero-side-copy {
-      font-size: 12px;
-      color: var(--muted);
-      line-height: 1.55;
-    }
     .notice {
       border: 1px solid var(--line);
       border-radius: 14px;
-      background: rgba(255, 255, 255, 0.78);
+      background: rgba(28, 28, 28, 0.92);
       padding: 12px 14px;
       transition: all 150ms ease;
-      min-height: 48px;
+      min-height: 0;
     }
     .notice.ok { color: #f0f0f0; border-color: rgba(255, 255, 255, 0.18); background: rgba(44, 44, 44, 0.94); }
     .notice.error { color: #f0f0f0; border-color: rgba(255, 255, 255, 0.16); background: rgba(40, 40, 40, 0.94); }
@@ -189,40 +141,6 @@ export function renderLoopHtml(): string {
       color: #b9b9b9;
       line-height: 1.45;
     }
-    .help-panel {
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      background: linear-gradient(180deg, rgba(34, 34, 34, 0.96), rgba(21, 21, 21, 0.98));
-      border-radius: 12px;
-      padding: 10px;
-      margin-top: 10px;
-    }
-    .entry-nav {
-      margin-top: 12px;
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-    .entry-link {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 96px;
-      padding: 10px 14px;
-      border-radius: 10px;
-      border: 1px solid rgba(32, 26, 18, 0.08);
-      background: rgba(252, 247, 241, 0.94);
-      color: #241d16;
-      font-size: 16px;
-      font-weight: 700;
-      line-height: 1;
-      text-decoration: none;
-    }
-    .entry-link.active {
-      background: linear-gradient(180deg, rgba(58, 48, 37, 0.96), rgba(30, 25, 20, 0.96));
-      border-color: rgba(38, 30, 21, 0.14);
-      color: #f8f0e3;
-    }
     .section-copy {
       display: grid;
       gap: 6px;
@@ -233,33 +151,11 @@ export function renderLoopHtml(): string {
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: #6f5a41;
-    }
-    .help-title {
-      margin: 0;
-      font-size: 14px;
-      color: #24436e;
-    }
-    .help-desc {
-      margin: 6px 0 0;
-      font-size: 12px;
-      color: #5f7394;
-      line-height: 1.5;
-    }
-    .help-example {
-      margin: 8px 0 0;
-      font-size: 12px;
-      color: #38567f;
-      background: #edf4ff;
-      border: 1px solid #d4e2f8;
-      border-radius: 8px;
-      padding: 8px;
-      white-space: pre-wrap;
-      word-break: break-word;
+      color: rgba(190, 190, 190, 0.6);
     }
     .draft-panel {
-      border: 1px solid #d6e1f2;
-      background: linear-gradient(180deg, #fbfdff, #f6f9ff);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: linear-gradient(180deg, rgba(28, 28, 28, 0.98), rgba(16, 16, 16, 0.98));
       border-radius: 12px;
       padding: 10px;
       margin-top: 10px;
@@ -267,7 +163,7 @@ export function renderLoopHtml(): string {
     .draft-title {
       margin: 0;
       font-size: 14px;
-      color: #25456f;
+      color: #f0f0f0;
     }
     .draft-kv {
       margin: 8px 0 0;
@@ -275,11 +171,11 @@ export function renderLoopHtml(): string {
       grid-template-columns: repeat(3, minmax(120px, 1fr));
       gap: 8px;
       font-size: 12px;
-      color: #4d6182;
+      color: rgba(220, 220, 220, 0.74);
     }
     .draft-item {
-      border: 1px solid #deE7f6;
-      background: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(20, 20, 20, 0.96);
       border-radius: 8px;
       padding: 7px 8px;
       min-height: 52px;
@@ -287,20 +183,20 @@ export function renderLoopHtml(): string {
     .draft-item b {
       display: block;
       font-size: 11px;
-      color: #6b7f9d;
+      color: rgba(190, 190, 190, 0.62);
       margin-bottom: 4px;
       font-weight: 600;
     }
     .draft-warn {
       margin: 8px 0 0;
       padding-left: 16px;
-      color: #8f5b0e;
+      color: #bdbdbd;
       font-size: 12px;
     }
     .draft-warn li { margin: 3px 0; }
     .compact-tools {
-      border: 1px dashed #c9d7ee;
-      background: #f7faff;
+      border: 1px dashed rgba(255, 255, 255, 0.12);
+      background: rgba(20, 20, 20, 0.76);
       border-radius: 10px;
       padding: 8px 10px;
       margin-top: 8px;
@@ -308,7 +204,7 @@ export function renderLoopHtml(): string {
     .compact-tools summary {
       cursor: pointer;
       font-size: 13px;
-      color: #35557f;
+      color: #d4d4d4;
       font-weight: 600;
       user-select: none;
     }
@@ -320,21 +216,21 @@ export function renderLoopHtml(): string {
       padding: 9px 10px;
       font-size: 14px;
       color: var(--text);
-      background: #fff;
+      background: rgba(12, 12, 12, 0.9);
       transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
     }
-    input:not([type="checkbox"]):hover, textarea:hover, select:hover { border-color: #b4c4de; }
+    input:not([type="checkbox"]):hover, textarea:hover, select:hover { border-color: rgba(255, 255, 255, 0.16); }
     input:not([type="checkbox"]):focus, textarea:focus, select:focus {
       outline: none;
-      border-color: var(--accent-2);
-      box-shadow: 0 0 0 3px rgba(31, 118, 255, 0.14);
-      background: #fcfdff;
+      border-color: rgba(255, 255, 255, 0.2);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+      background: rgba(15, 15, 15, 0.96);
     }
     .toggle-line {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      color: #4e6280;
+      color: rgba(220, 220, 220, 0.72);
       font-size: 14px;
       cursor: pointer;
       width: fit-content;
@@ -351,7 +247,7 @@ export function renderLoopHtml(): string {
     .span4 { grid-column: span 4; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
     .task-actions {
-      border-top: 1px dashed #d6e0f0;
+      border-top: 1px dashed rgba(255, 255, 255, 0.1);
       padding-top: 10px;
       margin-top: 10px;
     }
@@ -365,17 +261,17 @@ export function renderLoopHtml(): string {
       align-items: flex-start;
       gap: 10px;
       padding: 8px 10px;
-      border: 1px solid #dbe5f4;
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 10px;
-      background: linear-gradient(180deg, #fbfdff, #f7faff);
+      background: linear-gradient(180deg, rgba(26, 26, 26, 0.98), rgba(16, 16, 16, 0.98));
     }
     .action-group[data-group="primary"] {
-      border-color: #cfe0fb;
-      background: linear-gradient(180deg, #f7fbff, #eef5ff);
+      border-color: rgba(255, 255, 255, 0.1);
+      background: linear-gradient(180deg, rgba(32, 32, 32, 0.98), rgba(18, 18, 18, 0.98));
     }
     .action-group[data-group="danger"] {
-      border-color: #ead7d7;
-      background: linear-gradient(180deg, #fffafa, #fff5f5);
+      border-color: rgba(255, 255, 255, 0.1);
+      background: linear-gradient(180deg, rgba(30, 30, 30, 0.98), rgba(18, 18, 18, 0.98));
     }
     .action-group-label {
       flex: 0 0 62px;
@@ -383,7 +279,7 @@ export function renderLoopHtml(): string {
       font-size: 11px;
       font-weight: 700;
       letter-spacing: 0.04em;
-      color: #60728e;
+      color: rgba(185, 185, 185, 0.62);
       text-transform: uppercase;
     }
     .action-group-buttons {
@@ -395,7 +291,7 @@ export function renderLoopHtml(): string {
     .action-note {
       margin-top: 7px;
       font-size: 12px;
-      color: #5f7394;
+      color: rgba(205, 205, 205, 0.72);
       line-height: 1.5;
     }
     button {
@@ -409,7 +305,7 @@ export function renderLoopHtml(): string {
       font-weight: 600;
       transition: transform 100ms ease, box-shadow 120ms ease, filter 120ms ease;
     }
-    button:hover { filter: brightness(1.03); box-shadow: 0 8px 18px rgba(17, 78, 172, 0.23); }
+    button:hover { filter: brightness(1.03); box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24); }
     button:active { transform: translateY(1px) scale(0.995); }
     button[disabled] {
       opacity: 0.62;
@@ -430,12 +326,12 @@ export function renderLoopHtml(): string {
       vertical-align: -1px;
     }
     button.ghost.is-busy::after {
-      border-color: rgba(36, 66, 120, 0.25);
-      border-top-color: #244278;
+      border-color: rgba(255, 255, 255, 0.18);
+      border-top-color: #ffffff;
     }
     button:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 3px rgba(31, 118, 255, 0.24);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
     }
     button.ghost,
     button.neutral,
@@ -461,7 +357,7 @@ export function renderLoopHtml(): string {
       overflow: auto;
       padding-right: 2px;
       scrollbar-width: thin;
-      scrollbar-color: #b8cae8 transparent;
+      scrollbar-color: rgba(160, 160, 160, 0.5) transparent;
     }
     .task-list {
       grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -515,7 +411,7 @@ export function renderLoopHtml(): string {
       margin: 0;
       font-size: 17px;
       line-height: 1.25;
-      color: #16325c;
+      color: #f0f0f0;
       word-break: break-word;
     }
     .task-card-tags {
@@ -530,7 +426,7 @@ export function renderLoopHtml(): string {
     }
     .task-card-cwd {
       font-size: 12px;
-      color: #5c7090;
+      color: rgba(205, 205, 205, 0.68);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -541,9 +437,9 @@ export function renderLoopHtml(): string {
       gap: 8px;
     }
     .task-card-kv-item {
-      border: 1px solid #dce6f5;
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 10px;
-      background: rgba(255, 255, 255, 0.85);
+      background: rgba(18, 18, 18, 0.94);
       padding: 8px 9px;
       min-height: 58px;
     }
@@ -551,36 +447,36 @@ export function renderLoopHtml(): string {
       display: block;
       margin-bottom: 4px;
       font-size: 11px;
-      color: #6a7c98;
+      color: rgba(190, 190, 190, 0.62);
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
     .task-card-kv-item span {
       display: block;
       font-size: 12px;
-      color: #213a5f;
+      color: #e7e7e7;
       line-height: 1.45;
       white-space: pre-wrap;
       word-break: break-word;
     }
     .task-card-preview {
-      border: 1px solid #d8e3f5;
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 12px;
-      background: linear-gradient(180deg, #f8fbff, #f3f7ff);
+      background: linear-gradient(180deg, rgba(18, 18, 18, 0.96), rgba(12, 12, 12, 0.98));
       padding: 10px 11px;
       display: grid;
       gap: 6px;
     }
     .task-card-preview b {
       font-size: 11px;
-      color: #667b9f;
+      color: rgba(190, 190, 190, 0.62);
       letter-spacing: 0.05em;
       text-transform: uppercase;
     }
     .task-card-preview span {
       display: block;
       font-size: 13px;
-      color: #233a5c;
+      color: #e9e9e9;
       line-height: 1.55;
       display: -webkit-box;
       -webkit-line-clamp: 4;
@@ -597,7 +493,7 @@ export function renderLoopHtml(): string {
     }
     .task-card-tip {
       font-size: 12px;
-      color: #5c7090;
+      color: rgba(205, 205, 205, 0.68);
     }
     .task-card-actions {
       display: flex;
@@ -616,7 +512,7 @@ export function renderLoopHtml(): string {
       align-items: center;
       justify-content: center;
       padding: 22px;
-      background: rgba(12, 26, 52, 0.38);
+      background: rgba(0, 0, 0, 0.56);
       backdrop-filter: blur(10px);
       z-index: 50;
     }
@@ -628,12 +524,12 @@ export function renderLoopHtml(): string {
       width: min(1080px, 100%);
       max-height: calc(100vh - 44px);
       overflow: auto;
-      border: 1px solid #d2def1;
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 22px;
       background:
-        radial-gradient(120% 120% at 100% 0%, rgba(31, 118, 255, 0.08), transparent 38%),
-        linear-gradient(180deg, #ffffff, #f7faff);
-      box-shadow: 0 28px 70px rgba(15, 35, 72, 0.22);
+        radial-gradient(120% 120% at 100% 0%, rgba(255, 255, 255, 0.05), transparent 38%),
+        linear-gradient(180deg, rgba(24, 24, 24, 0.98), rgba(12, 12, 12, 0.98));
+      box-shadow: 0 28px 70px rgba(0, 0, 0, 0.32);
       padding: 18px;
     }
     .task-detail-head {
@@ -650,7 +546,7 @@ export function renderLoopHtml(): string {
     .task-detail-title {
       margin: 0;
       font-size: 26px;
-      color: #17345f;
+      color: #f0f0f0;
       line-height: 1.12;
     }
     .task-detail-grid {
@@ -665,9 +561,9 @@ export function renderLoopHtml(): string {
       align-content: start;
     }
     .task-detail-panel {
-      border: 1px solid #d9e3f3;
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 14px;
-      background: rgba(255, 255, 255, 0.88);
+      background: rgba(18, 18, 18, 0.94);
       padding: 12px;
     }
     .task-detail-panel h3 {
@@ -675,7 +571,7 @@ export function renderLoopHtml(): string {
       font-size: 13px;
       letter-spacing: 0.05em;
       text-transform: uppercase;
-      color: #5b7095;
+      color: rgba(190, 190, 190, 0.62);
     }
     .task-detail-meta {
       display: grid;
@@ -683,9 +579,9 @@ export function renderLoopHtml(): string {
       gap: 8px;
     }
     .task-detail-meta-item {
-      border: 1px solid #dce6f5;
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 10px;
-      background: #f8fbff;
+      background: rgba(12, 12, 12, 0.92);
       padding: 9px 10px;
       min-height: 64px;
     }
@@ -693,14 +589,14 @@ export function renderLoopHtml(): string {
       display: block;
       margin-bottom: 4px;
       font-size: 11px;
-      color: #6a7c98;
+      color: rgba(190, 190, 190, 0.62);
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
     .task-detail-meta-item span {
       display: block;
       font-size: 13px;
-      color: #213a5f;
+      color: #e8e8e8;
       white-space: pre-wrap;
       word-break: break-word;
     }
@@ -722,7 +618,7 @@ export function renderLoopHtml(): string {
     .task-edit-form .edit-row label {
       font-size: 12px;
       font-weight: 600;
-      color: #4b5f7b;
+      color: rgba(200, 200, 200, 0.68);
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
@@ -742,7 +638,7 @@ export function renderLoopHtml(): string {
     .live-title {
       margin-top: 6px;
       font-size: 12px;
-      color: #4e6280;
+      color: rgba(200, 200, 200, 0.68);
       font-weight: 600;
       letter-spacing: 0.1px;
     }
@@ -757,13 +653,13 @@ export function renderLoopHtml(): string {
       border: 1px solid var(--line);
       border-radius: 10px;
       padding: 8px 10px;
-      background: #f8fbff;
+      background: rgba(18, 18, 18, 0.94);
     }
     .wf-builder {
       border: 1px solid var(--line);
       border-radius: 10px;
       padding: 8px;
-      background: linear-gradient(180deg, #f9fbff, #f6f9ff);
+      background: linear-gradient(180deg, rgba(18, 18, 18, 0.96), rgba(12, 12, 12, 0.98));
       overflow-x: auto;
     }
     .wf-row { display: grid; grid-template-columns: 1.15fr 0.82fr 1.15fr 1.15fr 1.1fr 0.72fr 0.92fr 0.72fr auto; gap: 6px; margin-top: 6px; align-items: start; }
@@ -786,10 +682,10 @@ export function renderLoopHtml(): string {
       gap: 6px;
       min-height: 42px;
       padding: 0 10px;
-      border: 1px solid #d8e4fb;
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 10px;
-      background: #f7faff;
-      color: #48617f;
+      background: rgba(18, 18, 18, 0.92);
+      color: #d8d8d8;
       font-size: 12px;
       font-weight: 600;
       white-space: nowrap;
@@ -810,9 +706,9 @@ export function renderLoopHtml(): string {
       margin-top: 8px;
     }
     .wf-step-card {
-      border: 1px solid #d9e3f3;
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 10px;
-      background: linear-gradient(180deg, #fbfdff, #f7faff);
+      background: linear-gradient(180deg, rgba(20, 20, 20, 0.96), rgba(12, 12, 12, 0.98));
       padding: 10px;
     }
     .wf-step-card-head {
@@ -825,13 +721,13 @@ export function renderLoopHtml(): string {
     .wf-step-card-title {
       font-size: 13px;
       font-weight: 700;
-      color: #20385d;
+      color: #f0f0f0;
       white-space: pre-wrap;
       word-break: break-word;
     }
     .wf-step-card-meta {
       font-size: 12px;
-      color: #647892;
+      color: rgba(190, 190, 190, 0.68);
       white-space: pre-wrap;
       word-break: break-word;
     }
@@ -841,36 +737,36 @@ export function renderLoopHtml(): string {
       font-size: 12px;
     }
     .wf-step-card-field {
-      border: 1px solid #e1e8f5;
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 8px;
-      background: #fff;
+      background: rgba(14, 14, 14, 0.96);
       padding: 7px 8px;
     }
     .wf-step-card-field b {
       display: block;
       margin-bottom: 4px;
-      color: #5d7393;
+      color: rgba(190, 190, 190, 0.62);
       font-size: 11px;
     }
     .wf-step-card-field span {
       display: block;
-      color: #263a57;
+      color: #e8e8e8;
       white-space: pre-wrap;
       word-break: break-word;
     }
     .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
     .tag { font-size: 12px; border-radius: 999px; padding: 4px 8px; border: 1px solid var(--line); color: var(--muted); }
-    .ok { color: var(--ok); border-color: rgba(255, 255, 255, 0.16); background: rgba(48, 48, 48, 0.94); }
-    .error { color: var(--error); border-color: rgba(255, 255, 255, 0.16); background: rgba(40, 40, 40, 0.94); }
-    .tag.running { color: #f0f0f0; border-color: rgba(255, 255, 255, 0.16); background: rgba(48, 48, 48, 0.94); }
-    .tag.queued { color: #f0f0f0; border-color: rgba(255, 255, 255, 0.16); background: rgba(42, 42, 42, 0.94); }
-    .tag.warn-risk { color: var(--warn); border-color: rgba(255, 255, 255, 0.16); background: rgba(46, 46, 46, 0.94); }
+    .ok { color: var(--ok); border-color: rgba(115, 226, 167, 0.34); background: var(--ok-bg); }
+    .error { color: var(--error); border-color: rgba(255, 123, 114, 0.34); background: var(--error-bg); }
+    .tag.running { color: var(--running); border-color: rgba(103, 183, 255, 0.36); background: var(--running-bg); }
+    .tag.queued { color: var(--queued); border-color: rgba(199, 155, 255, 0.36); background: var(--queued-bg); }
+    .tag.warn-risk { color: var(--warn); border-color: rgba(244, 201, 93, 0.34); background: var(--risk-bg); }
     pre {
       white-space: pre-wrap;
       word-break: break-word;
       font-size: 12px;
-      background: #f3f7ff;
-      border: 1px solid #dee7f5;
+      background: rgba(12, 12, 12, 0.94);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 8px;
       padding: 8px;
     }
@@ -918,15 +814,10 @@ export function renderLoopHtml(): string {
         linear-gradient(140deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.015) 42%, rgba(15, 15, 15, 0.98) 78%),
         #151515;
     }
-    .eyebrow,
-    .tag.running,
-    .tag.queued,
-    .tag.warn-risk,
-    .ok,
-    .error {
-      background: rgba(54, 54, 54, 0.94);
-      border-color: rgba(255, 255, 255, 0.16);
-      color: #ededed;
+    .eyebrow {
+      background: rgba(39, 55, 73, 0.76);
+      border-color: rgba(95, 179, 255, 0.24);
+      color: #eaf4ff;
     }
     .workbench-tab.active,
     button {
@@ -981,146 +872,9 @@ export function renderLoopHtml(): string {
       color: #ddbbb6;
       box-shadow: none;
     }
-    /* Final gallery pass: remove the remaining deep tones and align with the shared warm ivory shell. */
-    :root {
-      --bg: #efe4d3;
-      --bg-2: #fbf6ef;
-      --card: #fbf6ef;
-      --text: #1d1711;
-      --muted: rgba(82, 68, 50, 0.72);
-      --line: rgba(32, 26, 18, 0.1);
-      --line-strong: rgba(32, 26, 18, 0.18);
-      --accent: #30271e;
-      --accent-2: #19140f;
-      --ok: #2e261f;
-      --warn: #564c41;
-      --error: #463c33;
-    }
-    body {
-      background:
-        radial-gradient(1000px 540px at 8% -10%, rgba(255, 255, 255, 0.76) 0%, transparent 68%),
-        radial-gradient(900px 520px at 105% 0%, rgba(224, 210, 191, 0.46) 0%, transparent 72%),
-        linear-gradient(180deg, var(--bg-2), var(--bg));
-    }
-    .workbench-main,
-    .workbench-head,
-    .card,
-    .hero,
-    .hero-side-card,
-    .surface-note,
-    .notice,
-    .help-panel,
-    .draft-panel,
-    .task-item,
-    .run-item,
-    .queue-item,
-    .task-detail-dialog,
-    .wf-step-card,
-    .wf-step-card-field,
-    pre {
-      background:
-        linear-gradient(180deg, rgba(255, 251, 246, 0.97), rgba(244, 236, 226, 0.98)),
-        #f8f0e4;
-      border-color: rgba(32, 26, 18, 0.1);
-      color: var(--text);
-      box-shadow: 0 22px 48px rgba(96, 72, 44, 0.12);
-    }
-    .workbench-main {
-      background:
-        linear-gradient(180deg, rgba(252, 247, 240, 0.98), rgba(243, 234, 223, 0.98)),
-        #f7efe4;
-    }
-    .hero {
-      background:
-        radial-gradient(circle at top left, rgba(255, 255, 255, 0.84), transparent 34%),
-        linear-gradient(135deg, rgba(251, 245, 238, 0.98), rgba(239, 229, 216, 0.98));
-    }
-    .overview-card,
-    .meta-pill,
-    .tag,
-    .task-card-tag,
-    .run-status-badge,
-    .wf-pill,
-    .workbench-tab,
-    .eyebrow,
-    .ok,
-    .error,
-    .tag.running,
-    .tag.queued,
-    .tag.warn-risk {
-      background: rgba(252, 247, 241, 0.92);
-      border-color: rgba(32, 26, 18, 0.08);
-      color: rgba(46, 37, 26, 0.82);
-    }
-    .workbench-tab.active,
-    button {
-      background: linear-gradient(180deg, rgba(252, 247, 241, 0.98), rgba(241, 233, 222, 0.98));
-      border-color: rgba(32, 26, 18, 0.1);
-      color: #231c15;
-      box-shadow: 0 10px 24px rgba(96, 72, 44, 0.08);
-    }
-    .ghost,
-    button.ghost,
-    button.neutral,
-    button.info,
-    button.success,
-    button.warn,
-    button.danger {
-      background: rgba(249, 243, 235, 0.96);
-      border-color: rgba(32, 26, 18, 0.08);
-      color: rgba(47, 38, 28, 0.84);
-      box-shadow: none;
-    }
-    .workbench-tab.active {
-      background: linear-gradient(180deg, rgba(244, 236, 226, 0.98), rgba(233, 223, 210, 0.98));
-      color: #1e1812;
-    }
-    h1, h2, h3, strong, .help-title, .draft-title, .hero-side-title,
-    .task-card-title, .task-detail-title {
-      color: #1b1510;
-    }
-    .task-card-kv-item span,
-    .task-card-preview span,
-    .task-detail-meta-item span,
-    .wf-step-card-title,
-    .wf-step-card-field span {
-      color: rgba(45, 36, 27, 0.96);
-    }
-    p, .muted, .hint, .help-desc, .hero-side-copy, .section-kicker, .field, .task-card-copy, .run-copy,
-    .task-card-tip, .task-card-cwd, .wf-step-card-meta, .action-note {
-      color: rgba(82, 68, 50, 0.72);
-    }
-    .task-card-kv-item b,
-    .task-card-preview b,
-    .task-detail-panel h3,
-    .task-detail-meta-item b,
-    .task-edit-form .edit-row label,
-    .live-title,
-    .wf-step-card-field b,
-    .action-group-label {
-      color: rgba(96, 77, 55, 0.76);
-    }
-    input:not([type="checkbox"]), textarea, select,
-    .help-example, .draft-item, .action-group, .task-card-kv-item, .task-card-preview,
-    .task-detail-panel, .task-detail-meta-item, .wf-step-head, .wf-row, .wf-cell, .queue-item {
-      border-color: rgba(32, 26, 18, 0.08);
-      background: rgba(255, 252, 248, 0.96);
-      color: var(--text);
-    }
-    input:not([type="checkbox"]):focus, textarea:focus, select:focus {
-      border-color: rgba(42, 34, 24, 0.22);
-      box-shadow: 0 0 0 3px rgba(62, 47, 31, 0.06);
-      background: rgba(255, 255, 255, 0.98);
-    }
-    .task-item::before,
-    .task-item.is-disabled::before,
-    .task-item.is-running::before,
-    .task-item.is-queued::before {
-      background: linear-gradient(180deg, #6a5a47, #2f271f);
-    }
     .loop-overview {
       display: grid;
-      grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.75fr);
+      grid-template-columns: 1fr;
       gap: 14px;
       align-items: stretch;
     }
@@ -1138,13 +892,11 @@ export function renderLoopHtml(): string {
       gap: 12px;
     }
     .mini-card {
-      border: 1px solid rgba(32, 26, 18, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 18px;
       padding: 16px;
-      background:
-        linear-gradient(180deg, rgba(255, 251, 246, 0.96), rgba(243, 235, 225, 0.98)),
-        #f8f0e4;
-      box-shadow: 0 20px 40px rgba(96, 72, 44, 0.12);
+      background: linear-gradient(180deg, rgba(24, 24, 24, 0.98), rgba(14, 14, 14, 0.98));
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.22);
     }
     .mini-kicker {
       display: inline-flex;
@@ -1153,7 +905,7 @@ export function renderLoopHtml(): string {
       font-weight: 700;
       letter-spacing: 0.16em;
       text-transform: uppercase;
-      color: rgba(82, 68, 50, 0.62);
+      color: rgba(190, 190, 190, 0.6);
     }
     .mini-card strong {
       display: block;
@@ -1174,28 +926,20 @@ export function renderLoopHtml(): string {
       padding: 10px 12px;
       border: 1px solid rgba(32, 26, 18, 0.08);
       border-radius: 12px;
-      background: rgba(249, 243, 235, 0.88);
+      background: rgba(24, 24, 24, 0.92);
     }
     .notice {
-      background: rgba(248, 241, 232, 0.94);
-      border-color: rgba(32, 26, 18, 0.08);
-      color: rgba(70, 57, 42, 0.8);
+      background: rgba(24, 24, 24, 0.94);
+      border-color: rgba(255, 255, 255, 0.08);
+      color: rgba(225, 225, 225, 0.8);
     }
     .notice.ok,
     .notice.warn,
     .notice.error {
-      background: rgba(243, 236, 227, 0.98);
-      border-color: rgba(32, 26, 18, 0.1);
-      color: #33291f;
+      background: rgba(28, 28, 28, 0.98);
+      border-color: rgba(255, 255, 255, 0.1);
+      color: #ededed;
     }
-    .hero-side-card,
-    .mini-card {
-      background:
-        linear-gradient(180deg, rgba(252, 247, 241, 0.97), rgba(242, 234, 223, 0.98)),
-        #f7efe4;
-      box-shadow: 0 18px 34px rgba(96, 72, 44, 0.08);
-    }
-    .composer-card .help-panel,
     .composer-card .compact-tools,
     .composer-card .notice {
       margin-top: 12px;
@@ -1204,7 +948,7 @@ export function renderLoopHtml(): string {
       margin-bottom: 6px;
     }
     .toggle-line input[type="checkbox"] {
-      accent-color: #2f271f;
+      accent-color: #bcbcbc;
     }
     @keyframes fade-up {
       from { opacity: 0; transform: translateY(4px); }
@@ -1215,6 +959,7 @@ export function renderLoopHtml(): string {
       to { transform: rotate(360deg); }
     }
     @media (max-width: 900px) {
+      .wrap { width: calc(100vw - 16px); }
       .hero-grid { grid-template-columns: 1fr; }
       .loop-overview,
       .runtime-lane,
@@ -1242,16 +987,15 @@ export function renderLoopHtml(): string {
   ${renderWorkbenchLayout("/__loop", `<div class="page-shell">
       <div class="workbench-rail">
         <span class="workbench-rail-label">Workflow / Loop</span>
-        <span class="workbench-rail-value">workflow-first 调度台，保留单命令兼容入口。</span>
+        <span class="workbench-rail-value">Loop</span>
       </div>
-      ${LOOP_HERO_HTML}
+      <div id="msg" class="notice muted"></div>
 
       <div class="section-stack">
         <section class="loop-overview">
           <div class="card">
             <div class="section-copy">
               <div class="section-kicker">运行概览</div>
-              <p class="muted">集中确认并发、排队和当前运行态，避免 workflow 调度失控。</p>
             </div>
             <div class="row">
               <h2 style="margin:0;">并发执行与排队</h2>
@@ -1266,31 +1010,15 @@ export function renderLoopHtml(): string {
             <div id="runtimeStats" class="muted runtime-banner">运行中: 0 | 排队中: 0</div>
             <div id="queueList" class="queue-list"></div>
           </div>
-          <div class="stack-card">
-            <div class="mini-card">
-              <span class="mini-kicker">Workflow</span>
-              <strong>支持工作流的搭建</strong>
-              <p>命令模式适合单轮执行，Workflow 模式适合多步骤串联与循环。</p>
-            </div>
-            <div class="mini-card">
-              <span class="mini-kicker">运行原则</span>
-              <strong>先建模，再运行</strong>
-              <p>任务配置、队列状态和运行历史分层展示，避免在一个长表单里混杂判断。</p>
-            </div>
-          </div>
         </section>
 
         <section class="composer-layout">
           <div class="card composer-card">
             <div class="section-copy">
-              <div class="section-kicker">Workflow Builder</div>
+              <div class="section-kicker">任务配置</div>
             </div>
             <div class="row section-headline">
-              <h2 style="margin:0 0 10px;">搭建任务与步骤流</h2>
-            </div>
-            <div class="help-panel">
-              <h3 class="help-title">开始前先做什么</h3>
-              <p class="help-desc">优先用多步骤 workflow 组织执行过程；若只是单步命令，也可以切换到兼容模式。</p>
+              <h2 style="margin:0 0 10px;">任务与步骤</h2>
             </div>
             <div class="grid" id="taskFormGrid">
               <label class="field"><span>任务名称</span><input id="name" placeholder="例如：每小时代码巡检" /></label>
@@ -1318,7 +1046,7 @@ export function renderLoopHtml(): string {
             <details id="assistPanel" class="compact-tools">
               <summary>展开预览</summary>
               <div class="draft-panel">
-                <h3 class="draft-title">配置预览（实时）</h3>
+                <h3 class="draft-title">配置预览</h3>
                 <div id="draftSummary" class="draft-kv"></div>
                 <ul id="draftWarnings" class="draft-warn"></ul>
               </div>
@@ -1335,7 +1063,6 @@ export function renderLoopHtml(): string {
           <div class="card">
             <div class="section-copy">
               <div class="section-kicker">任务列表</div>
-              <p class="muted">任务卡片负责浏览与调度入口，细节操作继续在弹层里展开。</p>
             </div>
             <div class="row">
               <h2 style="margin:0;">任务列表</h2>
@@ -1350,7 +1077,6 @@ export function renderLoopHtml(): string {
           <div class="card">
             <div class="section-copy">
               <div class="section-kicker">Live Runs</div>
-              <p class="muted">这里单独追踪运行中的任务过程，不和历史记录混在一起。</p>
             </div>
             <div class="row">
               <h2 style="margin:0 0 8px;">运行中执行过程</h2>
@@ -1362,7 +1088,6 @@ export function renderLoopHtml(): string {
         <div class="card">
           <div class="section-copy">
             <div class="section-kicker">Run History</div>
-            <p class="muted">最近运行记录保持独立回顾区，方便回看 workflow 的实际执行结果。</p>
           </div>
           <div class="row">
             <h2 style="margin:0 0 8px;">最近运行记录</h2>
@@ -1397,7 +1122,8 @@ export function renderLoopHtml(): string {
     let commandInputEl = null;
     let workflowCarryContextEl = null;
     let workflowLoopFromStartEl = null;
-    let workflowSharedSessionEl = null;
+    let workflowNewSessionPerStepEl = null;
+    let workflowNewSessionPerRoundEl = null;
     let workflowFullAccessEl = null;
     let workflowPanelHostEl = null;
     const taskFormGridEl = document.getElementById("taskFormGrid");
@@ -1432,7 +1158,8 @@ export function renderLoopHtml(): string {
       command: 'codex exec "{prompt}"',
       workflowCarryContext: "false",
       workflowLoopFromStart: "false",
-      workflowSharedSession: "true",
+      workflowNewSessionPerStep: "false",
+      workflowNewSessionPerRound: "false",
       workflowFullAccess: "false",
       workflowSteps: []
     };
@@ -1636,8 +1363,11 @@ export function renderLoopHtml(): string {
       if (workflowLoopFromStartEl && workflowLoopFromStartEl.isConnected) {
         modeDraft.workflowLoopFromStart = String(workflowLoopFromStartEl.value || "false");
       }
-      if (workflowSharedSessionEl && workflowSharedSessionEl.isConnected) {
-        modeDraft.workflowSharedSession = String(workflowSharedSessionEl.value || "true");
+      if (workflowNewSessionPerStepEl && workflowNewSessionPerStepEl.isConnected) {
+        modeDraft.workflowNewSessionPerStep = String(workflowNewSessionPerStepEl.value || "false");
+      }
+      if (workflowNewSessionPerRoundEl && workflowNewSessionPerRoundEl.isConnected) {
+        modeDraft.workflowNewSessionPerRound = String(workflowNewSessionPerRoundEl.value || "false");
       }
       if (workflowFullAccessEl && workflowFullAccessEl.isConnected) {
         modeDraft.workflowFullAccess = String(workflowFullAccessEl.value || "false");
@@ -1652,7 +1382,8 @@ export function renderLoopHtml(): string {
       commandInputEl = null;
       workflowCarryContextEl = null;
       workflowLoopFromStartEl = null;
-      workflowSharedSessionEl = null;
+      workflowNewSessionPerStepEl = null;
+      workflowNewSessionPerRoundEl = null;
       workflowFullAccessEl = null;
       workflowBuilderEl = null;
       workflowBuilderWrapEl = null;
@@ -1671,20 +1402,23 @@ export function renderLoopHtml(): string {
           + '<div id="cwdFieldWrap" class="field span2"><span>工作目录 / 文件路径（必填）</span><input id="cwd" placeholder="例如：/path/project 或 /path/project/src/app.ts" /><small class="hint">目录或文件路径</small></div>'
           + '<label id="commandFieldWrap" class="field span2"><span>任务级命令（可选，含 {prompt} 占位）</span><input id="command" placeholder="例如：my-cli run &quot;{prompt}&quot;" /><small class="hint">步骤未设置时使用</small></label>'
           + '<label id="workflowLoopField" class="field"><span>Workflow 执行方式</span><select id="workflowLoopFromStart"><option value="false" selected>单轮执行（一次）</option><option value="true">从头循环</option></select><small class="hint">单轮 / 循环</small></label>'
-          + '<label id="workflowSessionField" class="field"><span>Codex 上下文复用</span><select id="workflowSharedSession"><option value="true" selected>复用同一条 Codex 对话</option><option value="false">每步新开 Codex 对话</option></select><small class="hint">仅对 Codex 生效</small></label>'
+          + '<label id="workflowSessionPerStepField" class="field"><span>Codex 步骤会话</span><select id="workflowNewSessionPerStep"><option value="false" selected>步骤间复用同一对话</option><option value="true">每一步新开对话</option></select><small class="hint">仅对 Codex 生效</small></label>'
+          + '<label id="workflowSessionPerRoundField" class="field"><span>Codex 轮次会话</span><select id="workflowNewSessionPerRound"><option value="false" selected>新一轮继续上一轮对话</option><option value="true">每一轮新开对话</option></select><small class="hint">仅对 Codex 生效；若每步新开，则此项仅作展示</small></label>'
           + '<label id="workflowAccessField" class="field"><span>Codex 权限模式</span><select id="workflowFullAccess"><option value="false" selected>标准</option><option value="true">Full Access</option></select><small class="hint">仅对 Codex 生效</small></label>'
           + '<div id="workflowBuilderField" class="field span4"><span>Workflow 编辑器</span><div id="workflowPanelHost" class="wf-builder"><div class="muted">点击后开始添加步骤</div></div></div>';
         cwdInputEl = document.getElementById("cwd");
         commandInputEl = document.getElementById("command");
         workflowCarryContextEl = null;
         workflowLoopFromStartEl = document.getElementById("workflowLoopFromStart");
-        workflowSharedSessionEl = document.getElementById("workflowSharedSession");
+        workflowNewSessionPerStepEl = document.getElementById("workflowNewSessionPerStep");
+        workflowNewSessionPerRoundEl = document.getElementById("workflowNewSessionPerRound");
         workflowFullAccessEl = document.getElementById("workflowFullAccess");
         workflowPanelHostEl = document.getElementById("workflowPanelHost");
         if (cwdInputEl) cwdInputEl.value = modeDraft.cwd;
         if (commandInputEl) commandInputEl.value = modeDraft.command;
         if (workflowLoopFromStartEl) workflowLoopFromStartEl.value = modeDraft.workflowLoopFromStart || "false";
-        if (workflowSharedSessionEl) workflowSharedSessionEl.value = modeDraft.workflowSharedSession || "true";
+        if (workflowNewSessionPerStepEl) workflowNewSessionPerStepEl.value = modeDraft.workflowNewSessionPerStep || "false";
+        if (workflowNewSessionPerRoundEl) workflowNewSessionPerRoundEl.value = modeDraft.workflowNewSessionPerRound || "false";
         if (workflowFullAccessEl) workflowFullAccessEl.value = modeDraft.workflowFullAccess || "false";
         workflowBuilderRows = Array.isArray(modeDraft.workflowSteps) ? modeDraft.workflowSteps.map(normalizeStep) : [];
       } else {
@@ -1695,7 +1429,8 @@ export function renderLoopHtml(): string {
         commandInputEl = document.getElementById("command");
         workflowCarryContextEl = null;
         workflowLoopFromStartEl = null;
-        workflowSharedSessionEl = null;
+        workflowNewSessionPerStepEl = null;
+        workflowNewSessionPerRoundEl = null;
         workflowFullAccessEl = null;
         if (cwdInputEl) cwdInputEl.value = modeDraft.cwd;
         if (commandInputEl) commandInputEl.value = modeDraft.command;
@@ -1875,7 +1610,8 @@ export function renderLoopHtml(): string {
         setHidden(pathStatusEl, false);
       }
 
-      setHidden(document.getElementById("workflowSessionField"), !workflowUsesCodex);
+      setHidden(document.getElementById("workflowSessionPerStepField"), !workflowUsesCodex);
+      setHidden(document.getElementById("workflowSessionPerRoundField"), !workflowUsesCodex);
       setHidden(document.getElementById("workflowAccessField"), !workflowUsesCodex);
 
       updateModeHint();
@@ -2003,7 +1739,10 @@ export function renderLoopHtml(): string {
           '<div class="draft-item"><b>流程 / 命令模式</b>' + esc((workflowEnabled ? "多步骤" : "单步骤") + " / 自定义命令") + "</div>",
           '<div class="draft-item"><b>Workflow 启用步骤</b>' + esc(String(enabledSteps)) + "</div>",
           showCodexWorkflowSettings
-            ? ('<div class="draft-item"><b>Codex 上下文</b>' + esc(body.workflowSharedSession ? "复用同一条对话" : "每步新开对话") + "</div>")
+            ? ('<div class="draft-item"><b>Codex 步骤会话</b>' + esc(body.workflowNewSessionPerStep ? "每一步新开对话" : "步骤间复用同一条对话") + "</div>")
+            : "",
+          showCodexWorkflowSettings
+            ? ('<div class="draft-item"><b>Codex 轮次会话</b>' + esc(body.workflowNewSessionPerRound ? "每一轮新开对话" : "新一轮继续上一轮对话") + "</div>")
             : "",
           showCodexWorkflowSettings
             ? ('<div class="draft-item"><b>Codex 权限</b>' + esc(body.workflowFullAccess ? "Full Access" : "标准") + "</div>")
@@ -2055,7 +1794,8 @@ export function renderLoopHtml(): string {
       modeDraft.command = 'codex exec "{prompt}"';
       modeDraft.workflowCarryContext = "false";
       modeDraft.workflowLoopFromStart = "false";
-      modeDraft.workflowSharedSession = "true";
+      modeDraft.workflowNewSessionPerStep = "false";
+      modeDraft.workflowNewSessionPerRound = "false";
       modeDraft.workflowFullAccess = "false";
       modeDraft.workflowSteps = [];
       workflowBuilderRows = [];
@@ -2503,7 +2243,8 @@ export function renderLoopHtml(): string {
         workflow: Array.isArray(item.workflow) ? item.workflow : [],
         workflowSteps: Array.isArray(item.workflowSteps) ? item.workflowSteps : [],
         workflowLoopFromStart: item.workflowLoopFromStart === true,
-        workflowSharedSession: item.workflowSharedSession !== false,
+        workflowNewSessionPerStep: item.workflowNewSessionPerStep === true,
+        workflowNewSessionPerRound: item.workflowNewSessionPerRound === true,
         workflowFullAccess: item.workflowFullAccess === true
       });
     }
@@ -2513,7 +2254,8 @@ export function renderLoopHtml(): string {
         + detail.runtimeUiItem.runtimeTag
         + '<span class="tag">' + esc(item.runner) + '</span>'
         + '<span class="tag">' + esc(item.intervalSec) + 's</span>'
-        + (detail.usesCodexWorkflow ? ('<span class="tag">' + esc(detail.sessionText) + '</span>') : '')
+        + (detail.usesCodexWorkflow ? ('<span class="tag">' + esc(detail.stepSessionText) + '</span>') : '')
+        + (detail.usesCodexWorkflow ? ('<span class="tag">' + esc(detail.roundSessionText) + '</span>') : '')
         + (detail.usesCodexWorkflow ? ('<span class="tag' + (item.workflowFullAccess ? ' warn-risk' : '') + '">' + esc(detail.accessText) + '</span>') : '');
     }
 
@@ -2525,6 +2267,8 @@ export function renderLoopHtml(): string {
     function taskDetailOverviewMetaHtml(item, detail, hasCheckpoint) {
       return '<div class="task-detail-meta-item"><b>工作目录</b><span>' + esc(item.cwd || "(默认)") + '</span></div>'
         + '<div class="task-detail-meta-item"><b>执行方式</b><span>' + esc(detail.loopText) + '</span></div>'
+        + (detail.usesCodexWorkflow ? '<div class="task-detail-meta-item"><b>步骤会话</b><span>' + esc(detail.stepSessionText) + '</span></div>' : "")
+        + (detail.usesCodexWorkflow ? '<div class="task-detail-meta-item"><b>轮次会话</b><span>' + esc(detail.roundSessionText) + '</span></div>' : "")
         + '<div class="task-detail-meta-item"><b>最近执行</b><span>' + esc(formatTime(item.lastRunAt)) + '</span></div>'
         + '<div class="task-detail-meta-item"><b>断点恢复</b><span>' + esc(hasCheckpoint ? "可恢复" : "无断点") + '</span></div>';
     }
@@ -2601,7 +2345,8 @@ export function renderLoopHtml(): string {
         : "";
       const loopText = item.workflowLoopFromStart ? "从头循环" : "单轮";
       const usesCodexWorkflow = hasCodexWorkflowConfig(item.runner, item.workflowSteps);
-      const sessionText = item.workflowSharedSession === false ? "Codex 每步新对话" : "Codex 复用对话";
+      const stepSessionText = item.workflowNewSessionPerStep ? "Codex 每步新对话" : "Codex 步骤间复用对话";
+      const roundSessionText = item.workflowNewSessionPerRound ? "Codex 每轮新对话" : "Codex 跨轮继续对话";
       const accessText = item.workflowFullAccess ? "Full Access" : "标准";
       const runtimeState = taskRuntimeState(item.id);
       const runtimeUiItem = taskRuntimeUi(item, runtimeState);
@@ -2652,7 +2397,8 @@ export function renderLoopHtml(): string {
         stepDetail: stepDetail,
         usesCodexWorkflow: usesCodexWorkflow,
         loopText: loopText,
-        sessionText: sessionText,
+        stepSessionText: stepSessionText,
+        roundSessionText: roundSessionText,
         accessText: accessText,
         runtimeUiItem: runtimeUiItem,
         checkpointText: checkpointText,
@@ -2794,7 +2540,8 @@ export function renderLoopHtml(): string {
       const modeValue = isWorkflow ? "workflow" : "command";
       const cmd = item.command || "";
       const loopValue = item.workflowLoopFromStart ? "true" : "false";
-      const sessionValue = item.workflowSharedSession === false ? "false" : "true";
+      const sessionPerStepValue = item.workflowNewSessionPerStep ? "true" : "false";
+      const sessionPerRoundValue = item.workflowNewSessionPerRound ? "true" : "false";
       const accessValue = item.workflowFullAccess ? "true" : "false";
       let workflowFieldsHtml = "";
       if (isWorkflow) {
@@ -2804,10 +2551,15 @@ export function renderLoopHtml(): string {
           + '<option value="false"' + (loopValue === "false" ? ' selected' : '') + '>单轮执行（一次）</option>'
           + '<option value="true"' + (loopValue === "true" ? ' selected' : '') + '>从头循环</option>'
           + '</select></div>'
-          + '<div class="edit-row"><label>Codex 上下文复用</label>'
-          + '<select id="modalWorkflowSession">'
-          + '<option value="true"' + (sessionValue === "true" ? ' selected' : '') + '>复用同一条 Codex 对话</option>'
-          + '<option value="false"' + (sessionValue === "false" ? ' selected' : '') + '>每步新开 Codex 对话</option>'
+          + '<div class="edit-row"><label>Codex 步骤会话</label>'
+          + '<select id="modalWorkflowSessionPerStep">'
+          + '<option value="false"' + (sessionPerStepValue === "false" ? ' selected' : '') + '>步骤间复用同一条对话</option>'
+          + '<option value="true"' + (sessionPerStepValue === "true" ? ' selected' : '') + '>每一步新开对话</option>'
+          + '</select></div>'
+          + '<div class="edit-row"><label>Codex 轮次会话</label>'
+          + '<select id="modalWorkflowSessionPerRound">'
+          + '<option value="false"' + (sessionPerRoundValue === "false" ? ' selected' : '') + '>新一轮继续上一轮对话</option>'
+          + '<option value="true"' + (sessionPerRoundValue === "true" ? ' selected' : '') + '>每一轮新开对话</option>'
           + '</select></div>'
           + '<div class="edit-row"><label>Codex 权限模式</label>'
           + '<select id="modalWorkflowAccess">'
@@ -2920,7 +2672,8 @@ export function renderLoopHtml(): string {
       var promptEl = document.getElementById("modalPrompt");
       var modeEl = document.getElementById("modalMode");
       var loopEl = document.getElementById("modalWorkflowLoop");
-      var sessionEl = document.getElementById("modalWorkflowSession");
+      var sessionPerStepEl = document.getElementById("modalWorkflowSessionPerStep");
+      var sessionPerRoundEl = document.getElementById("modalWorkflowSessionPerRound");
       var accessEl = document.getElementById("modalWorkflowAccess");
       var name = nameEl ? nameEl.value.trim() : "";
       var prompt = promptEl ? promptEl.value.trim() : "";
@@ -2968,7 +2721,13 @@ export function renderLoopHtml(): string {
         workflowSteps: workflowSteps,
         workflowCarryContext: originalItem ? !!originalItem.workflowCarryContext : false,
         workflowLoopFromStart: loopEl ? loopEl.value === "true" : (originalItem ? !!originalItem.workflowLoopFromStart : false),
-        workflowSharedSession: sessionEl ? sessionEl.value !== "false" : (originalItem ? originalItem.workflowSharedSession !== false : true),
+        workflowNewSessionPerStep: sessionPerStepEl ? sessionPerStepEl.value === "true" : (originalItem ? !!originalItem.workflowNewSessionPerStep : false),
+        workflowNewSessionPerRound: sessionPerRoundEl ? sessionPerRoundEl.value === "true" : (originalItem ? !!originalItem.workflowNewSessionPerRound : false),
+        workflowSharedSession: !(
+          sessionPerStepEl ? sessionPerStepEl.value === "true" : (originalItem ? !!originalItem.workflowNewSessionPerStep : false)
+        ) && !(
+          sessionPerRoundEl ? sessionPerRoundEl.value === "true" : (originalItem ? !!originalItem.workflowNewSessionPerRound : false)
+        ),
         workflowFullAccess: accessEl ? accessEl.value === "true" : (originalItem ? !!originalItem.workflowFullAccess : false)
       };
       try {
@@ -2997,7 +2756,8 @@ export function renderLoopHtml(): string {
         : (Array.isArray(item.workflow) ? item.workflow.map(function (name) { return normalizeStep({ name: name }); }) : []);
       modeDraft.workflowCarryContext = item.workflowCarryContext ? "true" : "false";
       modeDraft.workflowLoopFromStart = item.workflowLoopFromStart ? "true" : "false";
-      modeDraft.workflowSharedSession = item.workflowSharedSession === false ? "false" : "true";
+      modeDraft.workflowNewSessionPerStep = item.workflowNewSessionPerStep ? "true" : "false";
+      modeDraft.workflowNewSessionPerRound = item.workflowNewSessionPerRound ? "true" : "false";
       modeDraft.workflowFullAccess = item.workflowFullAccess ? "true" : "false";
       advancedModeEl.value = hasWorkflowDefinition(item) ? "workflow" : "command";
       applyDynamicVisibility();
@@ -3206,7 +2966,7 @@ export function renderLoopHtml(): string {
         html += '<pre style="margin-top:8px;">' + esc(std) + '</pre>';
       }
       if (run.error) {
-        html += '<pre style="margin-top:8px; color:#b62f2f;">' + esc(run.error) + '</pre>';
+        html += '<pre style="margin-top:8px; color:#d0d0d0;">' + esc(run.error) + '</pre>';
       }
       html += '</div>';
       return html;
@@ -3226,9 +2986,12 @@ export function renderLoopHtml(): string {
       const workflowLoopFromStart = workflowEnabled
         ? ((workflowLoopFromStartEl ? workflowLoopFromStartEl.value : "false") === "true")
         : false;
-      const workflowSharedSession = workflowEnabled
-        ? ((workflowSharedSessionEl ? workflowSharedSessionEl.value : "true") !== "false")
-        : true;
+      const workflowNewSessionPerStep = workflowEnabled
+        ? ((workflowNewSessionPerStepEl ? workflowNewSessionPerStepEl.value : "false") === "true")
+        : false;
+      const workflowNewSessionPerRound = workflowEnabled
+        ? ((workflowNewSessionPerRoundEl ? workflowNewSessionPerRoundEl.value : "false") === "true")
+        : false;
       const workflowFullAccess = workflowEnabled
         ? ((workflowFullAccessEl ? workflowFullAccessEl.value : "false") === "true")
         : false;
@@ -3266,7 +3029,9 @@ export function renderLoopHtml(): string {
         workflowSteps: workflowSteps,
         workflowCarryContext: workflowCarryContext,
         workflowLoopFromStart: workflowLoopFromStart,
-        workflowSharedSession: workflowSharedSession,
+        workflowNewSessionPerStep: workflowNewSessionPerStep,
+        workflowNewSessionPerRound: workflowNewSessionPerRound,
+        workflowSharedSession: !(workflowNewSessionPerStep || workflowNewSessionPerRound),
         workflowFullAccess: workflowFullAccess,
         enabled: editingTaskId ? editingTaskEnabled : true
       };

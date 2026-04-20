@@ -11,6 +11,7 @@ export type RequestLogPayload = {
   method: string;
   path: string;
   provider: string;
+  apiFormat?: ApiFormat;
   headers: IncomingHttpHeaders;
   rawBody: Buffer;
   contentType?: string;
@@ -22,6 +23,7 @@ export type ResponseLogPayload = {
   method: string;
   path: string;
   provider: string;
+  apiFormat?: ApiFormat;
   statusCode: number;
   headers: IncomingHttpHeaders;
   rawBody: Buffer;
@@ -316,7 +318,10 @@ function decodeResponseBody(rawBody: Buffer, headers: IncomingHttpHeaders): Buff
   return rawBody;
 }
 
-function detectApiFormat(path: string, headers: IncomingHttpHeaders): ApiFormat {
+function detectApiFormat(path: string, headers: IncomingHttpHeaders, override?: ApiFormat): ApiFormat {
+  if (override === "openai" || override === "anthropic") {
+    return override;
+  }
   const p = (path || "").split("?")[0];
   if (headers["anthropic-version"] || p === "/v1/messages" || p === "/v1/complete") {
     return "anthropic";
@@ -1109,7 +1114,7 @@ export class LoggerService {
     this.pushRequestUsageEvent(payload);
     this.enqueue(async () => {
       const parsed = parseJsonIfPossible(payload.rawBody, payload.contentType);
-      const apiFormat = detectApiFormat(payload.path, payload.headers);
+      const apiFormat = detectApiFormat(payload.path, payload.headers, payload.apiFormat);
       const summary = summarizeRequest(apiFormat, parsed.jsonBody);
       const sessionId = getSessionId(payload.headers);
       this.requestSessionMap.set(payload.requestId, sessionId);
@@ -1142,7 +1147,7 @@ export class LoggerService {
     this.enqueue(async () => {
       const decodedBody = decodeResponseBody(payload.rawBody, payload.headers);
       const parsed = parseJsonIfPossible(decodedBody, payload.contentType);
-      const apiFormat = detectApiFormat(payload.path, payload.headers);
+      const apiFormat = detectApiFormat(payload.path, payload.headers, payload.apiFormat);
       const summary = summarizeResponse(apiFormat, parsed.jsonBody, decodedBody, payload.contentType);
       const sessionId = getSessionId(payload.headers) ?? this.requestSessionMap.get(payload.requestId) ?? null;
       const record: LogRecord = {
@@ -1217,7 +1222,7 @@ export class LoggerService {
   }
 
   private classifyRequestKind(payload: RequestLogPayload): "openai" | "claudecode" | "" {
-    const apiFormat = detectApiFormat(payload.path, payload.headers);
+    const apiFormat = detectApiFormat(payload.path, payload.headers, payload.apiFormat);
     if (apiFormat === "openai") {
       return "openai";
     }

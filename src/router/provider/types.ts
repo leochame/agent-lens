@@ -13,6 +13,15 @@ export type PathRewriteRule = {
   to: string;
 };
 
+export type ProviderApiFormat = "openai" | "anthropic";
+
+export type RouteRule = {
+  pathPrefix: string;
+  provider: string;
+  apiFormat: ProviderApiFormat;
+  stripPrefix?: boolean;
+};
+
 export type ProviderConfig = {
   baseURL: string;
   hostHeader?: string;
@@ -22,6 +31,7 @@ export type ProviderConfig = {
 
 export type RoutingConfig = {
   defaultProvider: string;
+  routes?: RouteRule[];
   byHeader?: string;
   byPathPrefix?: Record<string, string>;
   autoDetectProviderByFormat?: boolean;
@@ -56,5 +66,6 @@ export type AppConfig = {
 export type RoutingDecision = {
   providerName: string;
   provider: ProviderConfig;
+  apiFormat: ProviderApiFormat | "unknown";
   targetPathWithQuery: string;
 };

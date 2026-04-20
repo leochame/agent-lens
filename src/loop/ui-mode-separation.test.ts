@@ -16,7 +16,8 @@ test("loop page exposes command/workflow modes and workflow loop strategy", () =
   assert.match(html, /<option value="workflow" selected>多步骤 Workflow 模式（推荐）<\/option>/);
   assert.match(html, /<option value="command">单命令兼容模式<\/option>/);
   assert.match(script, /id="workflowLoopFromStart"/);
-  assert.match(script, /id="workflowSharedSession"/);
+  assert.match(script, /id="workflowNewSessionPerStep"/);
+  assert.match(script, /id="workflowNewSessionPerRound"/);
   assert.match(script, /id="workflowFullAccess"/);
   assert.match(script, /<option value="true">从头循环<\/option>/);
 });
