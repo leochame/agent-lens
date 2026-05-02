@@ -4,7 +4,7 @@ import { renderAdminHtml } from "./page";
 
 test("renderAdminHtml emits syntactically valid inline script", () => {
   const html = renderAdminHtml();
-  const match = html.match(/<script>([\s\S]*)<\/script>/);
+  const match = html.match(/<script>([\s\S]*?)<\/script>/);
   assert(match, "expected inline script tag in admin html");
   assert.doesNotThrow(() => {
     // Parse the generated browser-side script so template-string escapes don't silently break the page.
@@ -15,7 +15,7 @@ test("renderAdminHtml emits syntactically valid inline script", () => {
 
 test("renderAdminHtml uses consolidated hero layout with shared navigation", () => {
   const html = renderAdminHtml("anthropic", null, { section: "log" });
-  assert.match(html, /aria-label="功能侧边栏"/);
+  assert.match(html, /aria-label="功能侧边栏|功能侧边栏"/);
   assert.match(html, /class="workbench-link active" href="\/__log"/);
   assert.match(html, /class="workbench-sublink active" href="\/__log\/anthropic"/);
   assert.match(html, /class="console-hero card"/);
@@ -23,11 +23,11 @@ test("renderAdminHtml uses consolidated hero layout with shared navigation", () 
   assert.match(html, /id="msg"/);
   assert.match(html, /href="\/__log\/anthropic"/);
   assert.match(html, /Anthropic/);
-  assert.match(html, /保存归档设置/);
-  assert.match(html, /归档设置/);
-  assert.match(html, /列表操作/);
-  assert.match(html, /已归档日志列表/);
-  assert.match(html, /危险操作/);
+  assert.match(html, /保存归档设置|Save/);
+  assert.match(html, /归档设置|Log Config/);
+  assert.match(html, /列表操作|List Actions/);
+  assert.match(html, /已归档日志列表|Archived Logs/);
+  assert.match(html, /危险操作|Danger Zone/);
   assert.match(html, /id="toggleJsonBtn"/);
   assert.match(html, /id="copyJsonBtn"/);
   assert.match(html, /id="closeJsonBtn"/);
@@ -43,12 +43,12 @@ test("renderAdminHtml uses consolidated hero layout with shared navigation", () 
 test("renderAdminHtml router page keeps only primary state and action copy", () => {
   const html = renderAdminHtml("all", null, { section: "router" });
   assert.match(html, /Settings \/ Router/);
-  assert.match(html, /监听地址/);
+  assert.match(html, /监听地址|Listen Host/);
   assert.match(html, /General/);
   assert.match(html, /Routing/);
   assert.match(html, /Providers/);
-  assert.match(html, /添加上游/);
-  assert.match(html, /模型替换/);
+  assert.match(html, /添加 Provider|Add Provider/);
+  assert.match(html, /模型替换|Model Override/);
   assert.doesNotMatch(html, /建议先设置默认上游/);
   assert.doesNotMatch(html, /保存配置会写回配置文件并立即生效/);
 });

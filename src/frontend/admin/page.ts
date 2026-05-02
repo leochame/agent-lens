@@ -4,9 +4,11 @@ import { buildRouterPageContext } from "../router/context";
 import { renderAdminBody } from "./fragments";
 import { LogPageModel, RouterPageModel } from "../shared/page-models";
 import { WORKBENCH_LAYOUT_STYLES } from "../shared/shell";
+import { Locale } from "../shared/i18n";
 
 type RenderAdminHtmlOptions = {
   section?: "combined" | "router" | "log";
+  locale?: Locale;
 };
 
 function serializeForInlineScript(value: unknown): string {
@@ -16,23 +18,274 @@ function serializeForInlineScript(value: unknown): string {
     .replaceAll("&", "\\u0026");
 }
 
+function renderLocaleToggleScript(locale: Locale): string {
+  return `<script>
+    window.__INITIAL_LOCALE__ = ${JSON.stringify(locale)};
+    window.__I18N__ = ${JSON.stringify({
+      en: {
+        pending: "Pending",
+        saved: "Saved",
+        unsaved: "Unsaved",
+        online: "Online",
+        loaded: "Loaded",
+        loading: "Loading...",
+        realTime: "Real-time",
+        manual: "Manual",
+        error: "Error",
+        save: "Save",
+        saving: "Saving...",
+        reload: "Reload",
+        add: "Add",
+        delete: "Delete",
+        expand: "Expand",
+        collapse: "Collapse",
+        listenHost: "Listen Host",
+        listenPort: "Listen Port",
+        timeout: "Timeout (ms)",
+        defaultProvider: "Default Provider",
+        providers: "Providers",
+        addProvider: "Add Provider",
+        removeProvider: "Remove Provider",
+        baseURL: "Base URL",
+        modelOverride: "Model Override",
+        authMode: "Auth Mode",
+        injectKey: "Inject Key",
+        passthrough: "Passthrough",
+        apiKey: "API Key",
+        routes: "Routes",
+        addRoute: "Add Route",
+        removeRoute: "Remove Route",
+        apiFormat: "API Format",
+        upstream: "Upstream",
+        forward: "Forward",
+        keepPrefix: "Keep Prefix",
+        removePrefix: "Remove Prefix",
+        logs: "Logs",
+        archiveRequests: "Archive Requests",
+        totalLogs: "Total",
+        success: "Success",
+        failed: "Failed",
+        processing: "Processing",
+        avgDuration: "Avg (ms)",
+        parseErrors: "Parse Err",
+        openai: "OpenAI",
+        anthropic: "Claude",
+        other: "Other",
+        archiveStatus: "Status",
+        currentlyOn: "ON",
+        currentlyOff: "OFF",
+        autoRefresh: "Auto",
+        on: "ON",
+        off: "OFF",
+        refresh: "Refresh",
+        cleanFailed: "Clean Failed",
+        cleanAll: "Clean All",
+        requestJson: "Request",
+        responseJson: "Response",
+        viewJson: "View JSON",
+        copyJson: "Copy",
+        copyRequestJson: "Copy Req",
+        copyResponseJson: "Copy Res",
+        jsonCopied: "Copied",
+        expandAll: "Expand All",
+        collapseAll: "Collapse All",
+        noRequestContent: "No request",
+        noResponseContent: "No response",
+        sseAggregated: "SSE Agg",
+        rawResponse: "Raw",
+        validationErrors: "Validation Errors",
+        hostRequired: "Host required",
+        portInvalid: "Port 1-65535",
+        timeoutInvalid: "Timeout > 0",
+        providerRequired: "Provider required",
+        defaultProviderRequired: "Default required",
+        routeRequired: "Route required",
+        pathPrefixMustStart: "Path must start with /",
+        upstreamNotStart: "Upstream not found",
+        apiFormatInvalid: "Format invalid",
+        providerNameEmpty: "Name required",
+        providerNameDuplicate: "Name duplicate",
+        baseURLInvalid: "Base URL invalid",
+        configSaved: "Saved",
+        saveFailed: "Save failed",
+        loadFailed: "Load failed",
+        reloadSuccess: "Reloaded",
+        newProviderAdded: "Provider added, save to apply",
+        providerDeleted: "Provider deleted, save to apply",
+        newRouteAdded: "Route added, save to apply",
+        routeDeleted: "Route deleted, save to apply",
+        confirmReload: "Unsaved changes. Reload anyway?",
+        pageRenderedWithConfig: "Rendered with runtime config",
+        time: "Time",
+        model: "Model",
+        path: "Path",
+        duration: "Duration",
+        type: "Type",
+        archiveDetails: "Details",
+        pair: "Pair",
+        req: "Req",
+        res: "Res",
+        archiveHint: "Only archived with details shown",
+        requestIdMatch: "requestId match",
+        confirmCleanFailed: "Delete failed logs?",
+        confirmCleanAll: "Delete all logs?",
+        cleanedFailed: "Cleaned failed",
+        cleanedAll: "Cleaned all",
+        cleanupFailed: "Cleanup failed",
+      },
+      zh: {
+        pending: "待处理",
+        saved: "已同步",
+        unsaved: "待保存",
+        online: "在线",
+        loaded: "已加载",
+        loading: "加载中...",
+        realTime: "实时",
+        manual: "手动",
+        error: "错误",
+        save: "保存配置",
+        saving: "保存中...",
+        reload: "重载",
+        add: "添加",
+        delete: "删除",
+        expand: "展开",
+        collapse: "收起",
+        listenHost: "监听地址",
+        listenPort: "监听端口",
+        timeout: "超时 (ms)",
+        defaultProvider: "默认 Provider",
+        providers: "Providers",
+        addProvider: "添加 Provider",
+        removeProvider: "删除 Provider",
+        baseURL: "Base URL",
+        modelOverride: "模型替换",
+        authMode: "鉴权",
+        injectKey: "注入密钥",
+        passthrough: "透传",
+        apiKey: "密钥",
+        routes: "路由规则",
+        addRoute: "添加路由规则",
+        removeRoute: "删除规则",
+        apiFormat: "格式",
+        upstream: "上游",
+        forward: "转发",
+        keepPrefix: "保留前缀",
+        removePrefix: "移除前缀",
+        logs: "日志",
+        archiveRequests: "归档请求",
+        totalLogs: "总日志",
+        success: "成功",
+        failed: "失败",
+        processing: "处理中",
+        avgDuration: "平均耗时",
+        parseErrors: "解析错误",
+        openai: "OpenAI",
+        anthropic: "Claude",
+        other: "其他类型",
+        archiveStatus: "归档状态",
+        currentlyOn: "当前开启",
+        currentlyOff: "当前关闭",
+        autoRefresh: "自动刷新",
+        on: "开",
+        off: "关",
+        refresh: "刷新",
+        cleanFailed: "清理失败",
+        cleanAll: "清理全部",
+        requestJson: "请求",
+        responseJson: "响应",
+        viewJson: "查看 JSON",
+        copyJson: "复制 JSON",
+        copyRequestJson: "复制请求",
+        copyResponseJson: "复制响应",
+        jsonCopied: "已复制",
+        expandAll: "全部展开",
+        collapseAll: "全部收起",
+        noRequestContent: "没有请求内容",
+        noResponseContent: "没有响应内容",
+        sseAggregated: "SSE 聚合",
+        rawResponse: "原始响应",
+        validationErrors: "验证错误",
+        hostRequired: "Host 不能为空",
+        portInvalid: "Port 必须在 1~65535",
+        timeoutInvalid: "Timeout 必须是正整数",
+        providerRequired: "至少需要一个 Provider",
+        defaultProviderRequired: "Default Provider 必须存在",
+        routeRequired: "至少需要一条路径规则",
+        pathPrefixMustStart: "规则路径必须以 / 开头",
+        upstreamNotStart: "上游不存在",
+        apiFormatInvalid: "格式必须是 OpenAI 或 Claude",
+        providerNameEmpty: "Provider 名称不能为空",
+        providerNameDuplicate: "Provider 名称不能重复",
+        baseURLInvalid: "Base URL 必须以 http:// 或 https:// 开头",
+        configSaved: "已保存",
+        saveFailed: "保存失败",
+        loadFailed: "加载失败",
+        reloadSuccess: "已重载",
+        newProviderAdded: "已添加新上游，记得保存",
+        providerDeleted: "已删除一条上游配置，记得保存",
+        newRouteAdded: "已添加新路径规则，记得保存",
+        routeDeleted: "已删除一条路径规则，记得保存",
+        confirmReload: "当前有未保存改动，确认重载吗？",
+        pageRenderedWithConfig: "已使用当前运行中配置完成初始渲染",
+        time: "时间",
+        model: "模型",
+        path: "路径",
+        duration: "耗时",
+        type: "类型",
+        archiveDetails: "归档详情",
+        pair: "配对",
+        req: "Req",
+        res: "Res",
+        archiveHint: "只有带详情的记录才显示",
+        requestIdMatch: "requestId 对应",
+        confirmCleanFailed: "确认清理请求失败的文档吗？该操作不可恢复。",
+        confirmCleanAll: "确认清理全部文档吗？该操作不可恢复。",
+        cleanedFailed: "已清理失败文档",
+        cleanedAll: "已清理所有文档",
+        cleanupFailed: "清理失败",
+      }
+    })};
+    window.__t__ = function(key) {
+      const locale = window.__CURRENT_LOCALE__ || window.__INITIAL_LOCALE__ || 'zh';
+      return window.__I18N__[locale]?.[key] || window.__I18N__['zh'][key] || key;
+    };
+    window.__setLocale__ = function(loc) {
+      window.__CURRENT_LOCALE__ = loc;
+      document.documentElement.lang = loc === 'en' ? 'en-US' : 'zh-CN';
+      if (window.__applyTranslations__) window.__applyTranslations__();
+    };
+    window.__getLocale__ = function() { return window.__CURRENT_LOCALE__ || window.__INITIAL_LOCALE__ || 'zh'; };
+  <` + `/script>`;
+}
+
+function renderLocaleToggleHtml(locale: Locale): string {
+  const isZh = locale === "zh";
+  return `<div class="locale-toggle" style="position:fixed;top:14px;right:14px;z-index:100;display:flex;gap:4px;">
+    <button id="langZh" class="lang-btn ${isZh ? 'active' : ''}" onclick="window.__setLocale__('zh')" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:${isZh ? 'rgba(60,60,60,0.95)' : 'rgba(30,30,30,0.9)'};color:#f1f1f1;cursor:pointer;font-size:12px;font-weight:600;">中文</button>
+    <button id="langEn" class="lang-btn ${!isZh ? 'active' : ''}" onclick="window.__setLocale__('en')" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:${!isZh ? 'rgba(60,60,60,0.95)' : 'rgba(30,30,30,0.9)'};color:#f1f1f1;cursor:pointer;font-size:12px;font-weight:600;">EN</button>
+  </div>`;
+}
+
 export function renderAdminHtml(
   view: "all" | "openai" | "anthropic" = "all",
   initialConfig: AppConfig | null = null,
   options?: RenderAdminHtmlOptions
 ): string {
+  const locale: Locale = options?.locale ?? "zh";
   const section = options?.section ?? "combined";
   const page: RouterPageModel | LogPageModel = section === "router"
     ? buildRouterPageContext()
     : buildLogPageContext(view);
   const initialConfigJson = serializeForInlineScript(initialConfig);
+  const langAttr = locale === "zh" ? "zh-CN" : "en-US";
   // language=HTML
   return `<!doctype html>
-<html lang="zh-CN">
+<html lang="${langAttr}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${page.pageTitle}</title>
+  ${renderLocaleToggleScript(locale)}
   <style>
     ${WORKBENCH_LAYOUT_STYLES}
     :root {
@@ -1253,7 +1506,8 @@ export function renderAdminHtml(
   </style>
 </head>
 <body>
-  ${renderAdminBody(page)}
+  ${renderLocaleToggleHtml(locale)}
+  ${renderAdminBody(page, locale)}
 
   <script>
     const PAGE_SECTION = ${JSON.stringify(section)};
@@ -1286,9 +1540,9 @@ export function renderAdminHtml(
     let savedConfigSignature = "";
     const jsonNodeExpanded = new Set();
     const jsonNodeCollapsed = new Set();
-    const SAVE_BUTTON_TEXT = SHOW_ROUTER ? "保存配置" : "保存归档设置";
-    const SAVE_BUTTON_BUSY_TEXT = SHOW_ROUTER ? "保存中..." : "保存归档中...";
-    const RUNTIME_READY_TEXT = SHOW_ROUTER ? "已加载" : "在线";
+    const SAVE_BUTTON_TEXT = SHOW_ROUTER ? __t__('save') : __t__('save');
+    const SAVE_BUTTON_BUSY_TEXT = SHOW_ROUTER ? __t__('saving') : __t__('saving');
+    const RUNTIME_READY_TEXT = SHOW_ROUTER ? __t__('loaded') : __t__('online');
 
     const byId = (id) => document.getElementById(id);
 
@@ -1299,10 +1553,10 @@ export function renderAdminHtml(
         return;
       }
       if (dirty) {
-        badge.textContent = "待保存";
+        badge.textContent = __t__('unsaved');
         badge.className = "badge warn dot";
       } else {
-        badge.textContent = "已同步";
+        badge.textContent = __t__('saved');
         badge.className = "badge ok dot";
       }
     }
@@ -1362,17 +1616,17 @@ export function renderAdminHtml(
       const authModeKind = p.authMode === "passthrough" ? "passthrough" : "inject";
       return '<div class="provider-item" data-origin-name="' + esc(name) + '">' +
         '<div class="provider-head">' +
-        '<label class="field"><span class="sr-only">Provider 名称</span><input data-k="providerName" value="' + esc(name) + '" placeholder="例如：中转站" /></label>' +
-        '<button class="danger" data-action="remove">删除上游</button>' +
+        '<label class="field"><span class="sr-only">' + __t__('provider') + '</span><input data-k="providerName" value="' + esc(name) + '" placeholder="' + (window.__getLocale__() === 'zh' ? '例如：中转站' : 'e.g. Gateway') + '" /></label>' +
+        '<button class="danger" data-action="remove">' + __t__('removeProvider') + '</button>' +
         '</div>' +
         '<div class="provider-grid">' +
-        '<label class="field wide">Base URL<input data-k="baseURL" value="' + esc(p.baseURL || "") + '" placeholder="https://api.example.com" /></label>' +
-        '<label class="field wide">模型替换<input data-k="modelOverride" value="' + esc(p.modelOverride || "") + '" placeholder="留空则透传请求里的 model" /></label>' +
-        '<label class="field">鉴权<select data-k="authModeKind">' +
-          '<option value="inject"' + (authModeKind === "inject" ? " selected" : "") + '>注入密钥</option>' +
-          '<option value="passthrough"' + (authModeKind === "passthrough" ? " selected" : "") + '>透传</option>' +
+        '<label class="field wide">' + __t__('baseURL') + '<input data-k="baseURL" value="' + esc(p.baseURL || "") + '" placeholder="https://api.example.com" /></label>' +
+        '<label class="field wide">' + __t__('modelOverride') + '<input data-k="modelOverride" value="' + esc(p.modelOverride || "") + '" placeholder="' + (window.__getLocale__() === 'zh' ? '留空则透传请求里的 model' : 'Leave empty to passthrough') + '" /></label>' +
+        '<label class="field">' + __t__('authMode') + '<select data-k="authModeKind">' +
+          '<option value="inject"' + (authModeKind === "inject" ? " selected" : "") + '>' + __t__('injectKey') + '</option>' +
+          '<option value="passthrough"' + (authModeKind === "passthrough" ? " selected" : "") + '>' + __t__('passthrough') + '</option>' +
         '</select></label>' +
-        '<label class="field">密钥<input data-k="apiKey" type="password" autocomplete="new-password" value="' + esc(keyValue) + '" placeholder="sk-..." /></label>' +
+        '<label class="field">' + __t__('apiKey') + '<input data-k="apiKey" type="password" autocomplete="new-password" value="' + esc(keyValue) + '" placeholder="sk-..." /></label>' +
         '</div></div>';
     }
 
@@ -1391,18 +1645,18 @@ export function renderAdminHtml(
       const stripPrefix = Boolean(route && route.stripPrefix);
       return '<div class="provider-item route-item">' +
         '<div class="provider-head">' +
-        '<label class="field"><span class="sr-only">入口前缀</span><input data-k="pathPrefix" value="' + esc(route?.pathPrefix || "") + '" placeholder="/openai 或 /anthropic" /></label>' +
-        '<button class="danger" data-action="remove-route">删除规则</button>' +
+        '<label class="field"><span class="sr-only">' + __t__('pathPrefix') + '</span><input data-k="pathPrefix" value="' + esc(route?.pathPrefix || "") + '" placeholder="/openai or /anthropic" /></label>' +
+        '<button class="danger" data-action="remove-route">' + __t__('removeRoute') + '</button>' +
         '</div>' +
         '<div class="provider-grid">' +
-        '<label class="field"><span>格式</span><select data-k="apiFormat">' +
+        '<label class="field"><span>' + __t__('apiFormat') + '</span><select data-k="apiFormat">' +
           '<option value="openai"' + (apiFormat === "openai" ? " selected" : "") + '>OpenAI</option>' +
           '<option value="anthropic"' + (apiFormat === "anthropic" ? " selected" : "") + '>Claude</option>' +
         '</select></label>' +
-        '<label class="field"><span>上游</span><select data-k="routeProvider"></select></label>' +
-        '<label class="field"><span>转发</span><select data-k="stripPrefix">' +
-          '<option value="false"' + (!stripPrefix ? " selected" : "") + '>保留前缀</option>' +
-          '<option value="true"' + (stripPrefix ? " selected" : "") + '>移除前缀</option>' +
+        '<label class="field"><span>' + __t__('upstream') + '</span><select data-k="routeProvider"></select></label>' +
+        '<label class="field"><span>' + __t__('forward') + '</span><select data-k="stripPrefix">' +
+          '<option value="false"' + (!stripPrefix ? " selected" : "") + '>' + __t__('keepPrefix') + '</option>' +
+          '<option value="true"' + (stripPrefix ? " selected" : "") + '>' + __t__('removePrefix') + '</option>' +
         '</select></label>' +
         '</div></div>';
     }
@@ -1438,7 +1692,7 @@ export function renderAdminHtml(
         }
         const passthrough = authModeInput.value === "passthrough";
         apiKeyInput.disabled = passthrough;
-        apiKeyInput.placeholder = passthrough ? "透传下游 Header" : "sk-...";
+        apiKeyInput.placeholder = passthrough ? __t__('passthrough') : "sk-...";
       };
       if (nameInput) {
         const syncName = () => {
@@ -1461,11 +1715,11 @@ export function renderAdminHtml(
       if (removeBtn) {
         removeBtn.addEventListener("click", () => {
           const name = (nameInput && nameInput.value.trim()) || item.getAttribute("data-origin-name");
-          if (!confirm('确认删除上游 "' + name + '" ?')) return;
+          if (!confirm(__t__('confirm') + ' "' + name + '"?')) return;
           item.remove();
           rebuildProviderSelectors();
           syncDirtyState();
-          setMessage("已删除一条上游配置，记得保存。", "muted");
+          setMessage(__t__('providerDeleted'), "muted");
         });
       }
       syncAuthMode();
@@ -1512,7 +1766,7 @@ export function renderAdminHtml(
         removeBtn.addEventListener("click", () => {
           item.remove();
           syncDirtyState();
-          setMessage("已删除一条路径规则，记得保存。", "muted");
+          setMessage(__t__('routeDeleted'), "muted");
         });
       }
     }
@@ -1698,12 +1952,12 @@ export function renderAdminHtml(
     function applyRuntimeReadyMessage() {
       if (state.logging?.archiveRequests) {
         setMessage(SHOW_ROUTER
-          ? "已加载"
-          : "归档开启", "muted");
+          ? __t__('loaded')
+          : __t__('currentlyOn'), "muted");
       } else {
         setMessage(SHOW_ROUTER
-          ? "已加载"
-          : "归档关闭", "muted");
+          ? __t__('loaded')
+          : __t__('currentlyOff'), "muted");
       }
       byId("runtimeBadge").className = "badge ok dot";
       byId("runtimeBadge").textContent = RUNTIME_READY_TEXT;
@@ -1764,17 +2018,17 @@ export function renderAdminHtml(
           }).length
         },
         {
-          title: "归档状态",
+          title: __t__('archiveStatus'),
           key: "archive",
           count: arr.length
         }
       ];
-      const archiveState = state?.logging?.archiveRequests ? "当前开启" : "当前关闭";
+      const archiveState = state?.logging?.archiveRequests ? __t__('currentlyOn') : __t__('currentlyOff');
       wrap.innerHTML = groups.map((group) => {
         const copy = group.key === "archive"
-          ? "当前可查看列表中的记录都带有详情，未归档详情的记录不会展示。"
+          ? __t__('archiveHint')
           : group.title + " " + String(group.count);
-        const meta = group.key === "archive" ? archiveState : "已归档详情";
+        const meta = group.key === "archive" ? archiveState : __t__('archiveDetails') + ": " + __t__('archiveDetails');
         return '<div class="archive-bucket">' +
           '<div class="archive-bucket-head"><strong>' + escHtml(group.title) + '</strong><span>' + escHtml(meta) + '</span></div>' +
           '<div class="metric-value">' + escHtml(String(group.count)) + '</div>' +
@@ -2626,7 +2880,7 @@ export function renderAdminHtml(
       }
       const data = await r.json();
       renderLogs(data.items || []);
-      setLogState("在线", true);
+      setLogState(__t__('online'), true);
     }
 
     async function fetchUsageMetricsOnce() {
@@ -2730,7 +2984,7 @@ export function renderAdminHtml(
       const payload = collect();
       const errors = SHOW_ROUTER ? validateConfig(payload) : [];
       if (errors.length > 0) {
-        setMessage("保存失败，请先修正红框中的配置项。", "error");
+        setMessage(__t__('saveFailed') + ", " + __t__('validationErrors'), "error");
         return;
       }
       setSaving(true);
@@ -2746,9 +3000,9 @@ export function renderAdminHtml(
         }
         state = await r.json();
         render();
-        setMessage("已保存", "ok");
+        setMessage(__t__('configSaved'), "ok");
       } catch (e) {
-        setMessage("保存失败: " + e.message, "error");
+        setMessage(__t__('saveFailed') + ": " + e.message, "error");
       } finally {
         setSaving(false);
       }
@@ -2772,7 +3026,7 @@ export function renderAdminHtml(
         }
         rebuildProviderSelectors();
         setDirty(true);
-        setMessage("已添加新上游，记得保存。", "muted");
+        setMessage(__t__('newProviderAdded'), "muted");
       });
       byId("addRoute").addEventListener("click", () => {
         const list = byId("routesList");
@@ -2794,7 +3048,7 @@ export function renderAdminHtml(
         }
         rebuildProviderSelectors();
         setDirty(true);
-        setMessage("已添加新路径规则，记得保存。", "muted");
+        setMessage(__t__('newRouteAdded'), "muted");
       });
     }
 
@@ -2811,7 +3065,7 @@ export function renderAdminHtml(
       byId("reloadBtn").addEventListener("click", async () => {
         if (dirty && !confirm("当前有未保存改动，确认放弃并重载吗？")) return;
         await load();
-        setMessage("已重载", "ok");
+        setMessage(__t__('reloadSuccess'), "ok");
       });
 
       window.addEventListener("beforeunload", (e) => {
@@ -2902,8 +3156,8 @@ export function renderAdminHtml(
         return;
       }
       byId("runtimeBadge").className = "badge warn dot";
-      byId("runtimeBadge").textContent = "加载失败";
-      setMessage("加载失败: " + e.message, "error");
+      byId("runtimeBadge").textContent = __t__('loadFailed');
+      setMessage(__t__('loadFailed') + ": " + e.message, "error");
     });
     if (SHOW_LOGS) {
       void fetchLogsOnce();

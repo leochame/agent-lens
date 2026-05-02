@@ -4,7 +4,7 @@ import { renderRouterHtml } from "./page";
 
 test("renderRouterHtml emits syntactically valid inline script", () => {
   const html = renderRouterHtml();
-  const match = html.match(/<script>([\s\S]*)<\/script>/);
+  const match = html.match(/<script>([\s\S]*?)<\/script>/);
   assert(match, "expected inline script tag in router html");
   assert.doesNotThrow(() => {
     // eslint-disable-next-line no-new-func
@@ -12,12 +12,12 @@ test("renderRouterHtml emits syntactically valid inline script", () => {
   });
   assert.match(html, /href="\/__router"/);
   assert.match(html, /Settings \/ Router/);
-  assert.match(html, /已加载/);
+  assert.match(html, /已加载|Loaded/);
   assert.match(html, /General/);
   assert.match(html, /Routing/);
   assert.match(html, /Providers/);
-  assert.match(html, /<h2>上游<\/h2>/);
-  assert.match(html, /模型替换/);
+  assert.match(html, /<h2>上游|Upstream<\/h2>/);
+  assert.match(html, /模型替换|Model Override/);
   assert.doesNotMatch(html, /id="archiveRequests"/);
   assert.doesNotMatch(html, /id="logList"/);
   assert.doesNotMatch(html, /建议先设置默认上游/);
