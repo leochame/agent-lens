@@ -17,6 +17,7 @@ test("renderRouterHtml emits syntactically valid inline script", () => {
   assert.match(html, /Routing/);
   assert.match(html, /Providers/);
   assert.match(html, /<h2>上游<\/h2>/);
+  assert.match(html, /模型替换/);
   assert.doesNotMatch(html, /id="archiveRequests"/);
   assert.doesNotMatch(html, /id="logList"/);
   assert.doesNotMatch(html, /建议先设置默认上游/);

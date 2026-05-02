@@ -29,7 +29,7 @@ In other words: 3 core business modules (`Router`, `Log`, `Loop`) plus 1 entry m
 - Scope:
   - OpenAI / Anthropic format detection
   - header-based and path-based routing
-  - provider-specific upstream URL and credentials
+  - provider-specific upstream URL, credentials, and optional model override
   - third-party relay / compatible gateway forwarding
 
 ### 3. Log
@@ -44,6 +44,7 @@ In other words: 3 core business modules (`Router`, `Log`, `Loop`) plus 1 entry m
   - SSE responses may be aggregated for display only
   - display logic must not rewrite archived raw payloads
   - only records with archived detail should appear as viewable items
+  - request-body caching is allowed only while `archiveRequests=true`; otherwise the proxy must not keep local raw-payload caches or replay buffers
 
 ### 4. Loop
 - Path: `/__loop`

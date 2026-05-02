@@ -121,6 +121,46 @@ test("loadConfig falls back to API_TIMEOUT_MS and default when invalid", async (
   }
 });
 
+test("loadConfig warns when requestTimeoutMs is unusually high", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-config-test-"));
+  const prevCwd = process.cwd();
+  const originalWarn = console.warn;
+  const warnings: string[] = [];
+  try {
+    clearEnv();
+    console.warn = (message?: unknown, ...rest: unknown[]) => {
+      warnings.push([message, ...rest].map((item) => String(item)).join(" "));
+    };
+    await mkdir(join(dir, "config"), { recursive: true });
+    await writeFile(
+      join(dir, "config/default.yaml"),
+      [
+        "listen:",
+        "  host: 127.0.0.1",
+        "  port: 5290",
+        "routing:",
+        "  defaultProvider: openai",
+        "providers:",
+        "  openai:",
+        "    baseURL: https://api.openai.example",
+        "logging:",
+        "  filePath: logs/req.log",
+        "requestTimeoutMs: 120000000"
+      ].join("\n"),
+      "utf8"
+    );
+    process.chdir(dir);
+    const config = loadConfig();
+    assert.equal(config.requestTimeoutMs, 120000000);
+    assert.match(warnings.join("\n"), /requestTimeoutMs=120000000ms is unusually high/);
+  } finally {
+    console.warn = originalWarn;
+    process.chdir(prevCwd);
+    clearEnv();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("loadConfig allows env listen overrides", async () => {
   const dir = await mkdtemp(join(tmpdir(), "agent-lens-config-test-"));
   const prevCwd = process.cwd();

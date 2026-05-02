@@ -129,9 +129,18 @@ function asString(value: unknown): string {
   return "";
 }
 
+const DEFAULT_PREVIEW_MAX_LEN = 2400;
+const MAX_SUMMARY_MESSAGES = 24;
+const MAX_SUMMARY_TOOL_CALLS = 32;
+const MAX_SYSTEM_PROMPT_PREVIEW = 4000;
+
 function normalizePreviewText(text: string, _maxLen = 2400): string {
-  // Keep agent-related message/tool/tool_call content complete (no truncation).
-  return String(text ?? "").replace(/\r\n?/g, "\n");
+  const normalized = String(text ?? "").replace(/\r\n?/g, "\n");
+  const maxLen = Number.isFinite(_maxLen) && _maxLen > 0 ? Math.floor(_maxLen) : DEFAULT_PREVIEW_MAX_LEN;
+  if (normalized.length <= maxLen) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(0, maxLen - 1))}…`;
 }
 
 function stripUselessChars(text: string): string {
@@ -182,6 +191,9 @@ function extractTextFromOpenAiContentPart(
 }
 
 function pushMessage(target: MessageSummary[], message: MessageSummary): void {
+  if (target.length >= MAX_SUMMARY_MESSAGES) {
+    return;
+  }
   const preview = normalizePreviewText(message.preview || "");
   if (!preview) {
     return;
@@ -196,6 +208,9 @@ function pushMessage(target: MessageSummary[], message: MessageSummary): void {
 }
 
 function pushToolCall(target: ToolCallSummary[], toolCall: ToolCallSummary): void {
+  if (target.length >= MAX_SUMMARY_TOOL_CALLS) {
+    return;
+  }
   const name = normalizePreviewText(toolCall.name || "", 200);
   if (!name) {
     return;
@@ -467,14 +482,14 @@ function summarizeRequest(
 
   if (apiFormat === "anthropic") {
     if (typeof body.system === "string") {
-      base.systemPromptPreview = body.system;
+      base.systemPromptPreview = normalizePreviewText(body.system, MAX_SYSTEM_PROMPT_PREVIEW);
       pushMessage(base.messages, { role: "system", kind: "system", preview: body.system });
     } else if (Array.isArray(body.system)) {
       const s = body.system
         .map((x) => (x && typeof x === "object" ? asString((x as Record<string, unknown>).text) : ""))
         .filter(Boolean)
         .join("\n");
-      base.systemPromptPreview = s || null;
+      base.systemPromptPreview = s ? normalizePreviewText(s, MAX_SYSTEM_PROMPT_PREVIEW) : null;
       if (s) {
         pushMessage(base.messages, { role: "system", kind: "system", preview: s });
       }
@@ -631,7 +646,7 @@ function summarizeRequest(
       }
     }
     if (!base.systemPromptPreview && typeof body.instructions === "string") {
-      base.systemPromptPreview = body.instructions;
+      base.systemPromptPreview = normalizePreviewText(body.instructions, MAX_SYSTEM_PROMPT_PREVIEW);
       pushMessage(base.messages, { role: "system", kind: "system", preview: body.instructions });
     }
   }
@@ -1067,6 +1082,7 @@ export class LoggerService {
   private readonly requestSessionMap = new Map<string, string | null>();
   private static readonly MAX_REQUEST_SESSION_ENTRIES = 5000;
   private readonly requestUsageEvents: Array<{ tsMs: number; kind: "openai" | "claudecode" }> = [];
+  private usageEventsHead = 0;
   private static readonly REQUEST_USAGE_WINDOW_MS = 2 * 60 * 1000;
   private static readonly MAX_REQUEST_USAGE_EVENTS = 20000;
 
@@ -1082,8 +1098,11 @@ export class LoggerService {
     let openai2m = 0;
     let claudeCode1m = 0;
     let claudeCode2m = 0;
+    let activeCount = 0;
 
-    for (const event of this.requestUsageEvents) {
+    for (let i = this.usageEventsHead; i < this.requestUsageEvents.length; i++) {
+      const event = this.requestUsageEvents[i];
+      activeCount++;
       if (event.tsMs < twoMinuteAgo) {
         continue;
       }
@@ -1106,7 +1125,7 @@ export class LoggerService {
       openai2m,
       claudeCode1m,
       claudeCode2m,
-      sampledRequestRecords: this.requestUsageEvents.length
+      sampledRequestRecords: activeCount
     };
   }
 
@@ -1178,6 +1197,10 @@ export class LoggerService {
     });
   }
 
+  public async drain(): Promise<void> {
+    await this.writeChain;
+  }
+
   private enqueue(task: () => Promise<void>): void {
     const chained = async (): Promise<void> => {
       await task();
@@ -1209,16 +1232,27 @@ export class LoggerService {
     const normalizedTs = Number.isFinite(tsMs) ? tsMs : now;
     this.requestUsageEvents.push({ tsMs: normalizedTs, kind });
     this.pruneRequestUsageEvents(now);
-    if (this.requestUsageEvents.length > LoggerService.MAX_REQUEST_USAGE_EVENTS) {
-      this.requestUsageEvents.splice(0, this.requestUsageEvents.length - LoggerService.MAX_REQUEST_USAGE_EVENTS);
+    const activeCount = this.requestUsageEvents.length - this.usageEventsHead;
+    if (activeCount > LoggerService.MAX_REQUEST_USAGE_EVENTS) {
+      this.usageEventsHead = this.requestUsageEvents.length - LoggerService.MAX_REQUEST_USAGE_EVENTS;
     }
+    this.compactUsageEvents();
   }
 
   private pruneRequestUsageEvents(nowMs: number): void {
     const minTs = nowMs - LoggerService.REQUEST_USAGE_WINDOW_MS;
-    while (this.requestUsageEvents.length > 0 && this.requestUsageEvents[0].tsMs < minTs) {
-      this.requestUsageEvents.shift();
+    while (this.usageEventsHead < this.requestUsageEvents.length && this.requestUsageEvents[this.usageEventsHead].tsMs < minTs) {
+      this.usageEventsHead++;
     }
+  }
+
+  private compactUsageEvents(): void {
+    if (this.usageEventsHead < 1024) {
+      return;
+    }
+    this.requestUsageEvents.copyWithin(0, this.usageEventsHead);
+    this.requestUsageEvents.length -= this.usageEventsHead;
+    this.usageEventsHead = 0;
   }
 
   private classifyRequestKind(payload: RequestLogPayload): "openai" | "claudecode" | "" {

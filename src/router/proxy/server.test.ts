@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "./server";
 import { AppConfig } from "../provider/types";
+import { loadArchivedLogDetail, loadPairedLogs } from "../../log/archive";
 
 async function closeServer(server: http.Server): Promise<void> {
   await Promise.race([
@@ -263,6 +264,58 @@ test("startServer writes relative log files under the config directory instead o
   }
 });
 
+test("startServer returns contextual 502 details when upstream is unreachable", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-server-test-"));
+  const proxyPort = await reservePort();
+  const unreachablePort = await reservePort();
+  const started = await startServer(
+    {
+      listen: { host: "127.0.0.1", port: proxyPort },
+      routing: { defaultProvider: "ruoli.dev - gpt" },
+      providers: {
+        "ruoli.dev - gpt": { baseURL: `http://127.0.0.1:${unreachablePort}` }
+      },
+      logging: { filePath: "logs/req.log", archiveRequests: false }
+    },
+    join(dir, "config/default.yaml")
+  );
+
+  try {
+    const response = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
+      const req = http.request(
+        {
+          method: "POST",
+          host: "127.0.0.1",
+          port: proxyPort,
+          path: "/v1/responses",
+          headers: { "content-type": "application/json" }
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+          res.on("end", () => {
+            resolve({
+              statusCode: res.statusCode ?? 0,
+              body: Buffer.concat(chunks).toString("utf8")
+            });
+          });
+        }
+      );
+      req.on("error", reject);
+      req.end(JSON.stringify({ model: "gpt-4.1-mini", input: "hello" }));
+    });
+
+    assert.equal(response.statusCode, 502);
+    const parsed = JSON.parse(response.body) as { error?: string };
+    assert.match(String(parsed.error || ""), /Gateway error contacting provider "ruoli\.dev - gpt"/);
+    assert.match(String(parsed.error || ""), new RegExp(`127\\.0\\.0\\.1:${unreachablePort}`));
+  } finally {
+    await started.close();
+    started.shutdownLoop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("startServer keeps __admin as a compatibility redirect to __log", async () => {
   const dir = await mkdtemp(join(tmpdir(), "agent-lens-server-test-"));
   const port = await reservePort();
@@ -352,7 +405,7 @@ test("startServer keeps GET / available for proxied upstream traffic", async () 
   }
 });
 
-test("startServer strips configured Claude route prefixes before forwarding upstream", async () => {
+test("startServer strips configured Anthropic route prefixes before forwarding upstream", async () => {
   const dir = await mkdtemp(join(tmpdir(), "agent-lens-server-test-"));
   const upstreamPort = await reservePort();
   const proxyPort = await reservePort();
@@ -369,8 +422,8 @@ test("startServer strips configured Claude route prefixes before forwarding upst
       routing: {
         defaultProvider: "openai",
         routes: [
-          { pathPrefix: "/v1", provider: "openai", apiFormat: "openai", stripPrefix: true },
-          { pathPrefix: "/claude", provider: "anthropic", apiFormat: "anthropic", stripPrefix: true }
+          { pathPrefix: "/openai", provider: "openai", apiFormat: "openai", stripPrefix: true },
+          { pathPrefix: "/anthropic", provider: "anthropic", apiFormat: "anthropic", stripPrefix: true }
         ]
       },
       providers: {
@@ -389,7 +442,7 @@ test("startServer strips configured Claude route prefixes before forwarding upst
           method: "POST",
           host: "127.0.0.1",
           port: proxyPort,
-          path: "/claude/v1/messages?beta=1",
+          path: "/anthropic/v1/messages?beta=1",
           headers: { "content-type": "application/json" }
         },
         (res) => {
@@ -418,6 +471,86 @@ test("startServer strips configured Claude route prefixes before forwarding upst
   }
 });
 
+test("startServer overrides Anthropic model for upstream while archiving original request", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-server-test-"));
+  const upstreamPort = await reservePort();
+  const proxyPort = await reservePort();
+  const originalPayload = {
+    model: "claude-3-5-sonnet-latest",
+    max_tokens: 16,
+    messages: [{ role: "user", content: "hello" }]
+  };
+  let capturedBody = "";
+  const upstream = http.createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+    req.on("end", () => {
+      capturedBody = Buffer.concat(chunks).toString("utf8");
+      const parsed = JSON.parse(capturedBody) as { model?: string };
+      res.writeHead(parsed.model === "glm-5.1" ? 200 : 400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ type: "message", content: [{ type: "text", text: "OK" }], receivedModel: parsed.model }));
+    });
+  });
+  await new Promise<void>((resolve) => upstream.listen(upstreamPort, "127.0.0.1", () => resolve()));
+  const started = await startServer(
+    {
+      listen: { host: "127.0.0.1", port: proxyPort },
+      routing: {
+        defaultProvider: "anthropic",
+        routes: [{ pathPrefix: "/anthropic", provider: "anthropic", apiFormat: "anthropic", stripPrefix: true }]
+      },
+      providers: {
+        anthropic: { baseURL: `http://127.0.0.1:${upstreamPort}`, modelOverride: "glm-5.1" }
+      },
+      logging: { filePath: "logs/req.log", archiveRequests: true, maxArchiveBodyBytes: 0 }
+    },
+    join(dir, "config/default.yaml")
+  );
+  let closed = false;
+
+  try {
+    const response = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
+      const req = http.request(
+        {
+          method: "POST",
+          host: "127.0.0.1",
+          port: proxyPort,
+          path: "/anthropic/v1/messages",
+          headers: { "content-type": "application/json", "anthropic-version": "2023-06-01" }
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+          res.on("end", () => {
+            resolve({ statusCode: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") });
+          });
+        }
+      );
+      req.on("error", reject);
+      req.end(JSON.stringify(originalPayload));
+    });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(JSON.parse(capturedBody).model, "glm-5.1");
+
+    await started.close();
+    closed = true;
+    const logPath = join(dir, "config", "logs", "req.log");
+    const items = await loadPairedLogs(logPath, 20, "anthropic");
+    assert.equal(items.length, 1);
+    const detail = await loadArchivedLogDetail(logPath, items[0].requestId, "anthropic", null);
+    const requestDetail = detail.request as { body?: { text?: string } };
+    assert.deepEqual(JSON.parse(requestDetail.body?.text || "{}"), originalPayload);
+  } finally {
+    if (!closed) {
+      await started.close();
+    }
+    started.shutdownLoop();
+    await closeServer(upstream);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("startServer strips configured OpenAI route prefixes before forwarding upstream", async () => {
   const dir = await mkdtemp(join(tmpdir(), "agent-lens-server-test-"));
   const upstreamPort = await reservePort();
@@ -435,7 +568,7 @@ test("startServer strips configured OpenAI route prefixes before forwarding upst
       routing: {
         defaultProvider: "openai",
         routes: [
-          { pathPrefix: "/v1", provider: "openai", apiFormat: "openai", stripPrefix: true }
+          { pathPrefix: "/openai", provider: "openai", apiFormat: "openai", stripPrefix: true }
         ]
       },
       providers: {
@@ -453,7 +586,7 @@ test("startServer strips configured OpenAI route prefixes before forwarding upst
           method: "POST",
           host: "127.0.0.1",
           port: proxyPort,
-          path: "/v1/chat/completions?stream=true",
+          path: "/openai/chat/completions?stream=true",
           headers: { "content-type": "application/json" }
         },
         (res) => {
@@ -479,6 +612,157 @@ test("startServer strips configured OpenAI route prefixes before forwarding upst
     started.shutdownLoop();
     await closeServer(upstream);
     await new Promise((resolve) => setTimeout(resolve, 100));
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("startServer smoke routes OpenAI and Anthropic through prefix header and format switches", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-lens-router-smoke-test-"));
+  const proxyPort = await reservePort();
+  const hits: Array<{ provider: string; path: string; auth: string; targetHeader: string }> = [];
+
+  const createUpstream = async (provider: string): Promise<{ server: http.Server; port: number }> => {
+    const port = await reservePort();
+    const server = http.createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+      req.on("end", () => {
+        const requestBody = Buffer.concat(chunks).toString("utf8");
+        const hit = {
+          provider,
+          path: req.url ?? "",
+          auth: String(req.headers.authorization || req.headers["x-api-key"] || ""),
+          targetHeader: String(req.headers["x-target-provider"] || "")
+        };
+        hits.push(hit);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, provider, path: hit.path, auth: hit.auth, targetHeader: hit.targetHeader, requestBody }));
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", () => resolve()));
+    return { server, port };
+  };
+
+  const openai = await createUpstream("openai-main");
+  const anthropicRoute = await createUpstream("anthropic-route");
+  const anthropicAuto = await createUpstream("anthropic-auto");
+
+  const started = await startServer(
+    {
+      listen: { host: "127.0.0.1", port: proxyPort },
+      routing: {
+        defaultProvider: "openai-main",
+        routes: [
+          { pathPrefix: "/openai", provider: "openai-main", apiFormat: "openai", stripPrefix: true },
+          { pathPrefix: "/anthropic", provider: "anthropic-route", apiFormat: "anthropic", stripPrefix: true }
+        ],
+        byHeader: "x-target-provider",
+        autoDetectProviderByFormat: true,
+        formatProviders: {
+          openai: "openai-main",
+          anthropic: "anthropic-auto"
+        }
+      },
+      providers: {
+        "openai-main": {
+          baseURL: `http://127.0.0.1:${openai.port}`,
+          authMode: { type: "inject", header: "authorization", value: "openai-token", valuePrefix: "Bearer " }
+        },
+        "anthropic-route": {
+          baseURL: `http://127.0.0.1:${anthropicRoute.port}`,
+          authMode: { type: "inject", header: "x-api-key", value: "route-token" }
+        },
+        "anthropic-auto": {
+          baseURL: `http://127.0.0.1:${anthropicAuto.port}`,
+          authMode: { type: "inject", header: "x-api-key", value: "auto-token" }
+        }
+      },
+      logging: { filePath: "logs/req.log", archiveRequests: false }
+    },
+    join(dir, "config/default.yaml")
+  );
+
+  const send = (path: string, headers: Record<string, string> = {}): Promise<{ statusCode: number; body: string }> =>
+    new Promise((resolve, reject) => {
+      const req = http.request(
+        {
+          method: "POST",
+          host: "127.0.0.1",
+          port: proxyPort,
+          path,
+          headers: { "content-type": "application/json", ...headers }
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+          res.on("end", () => resolve({ statusCode: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
+        }
+      );
+      req.on("error", reject);
+      req.end(JSON.stringify({ model: "smoke", messages: [{ role: "user", content: "hello" }] }));
+    });
+
+  const sendAndParse = async (path: string, headers: Record<string, string> = {}): Promise<{
+    statusCode: number;
+    body: { ok?: boolean; provider?: string; path?: string; auth?: string; targetHeader?: string; requestBody?: string };
+  }> => {
+    const response = await send(path, headers);
+    assert.equal(response.statusCode, 200);
+    assert.notEqual(response.body, "");
+    return { statusCode: response.statusCode, body: JSON.parse(response.body) };
+  };
+
+  try {
+    const openaiResponse = await sendAndParse("/openai/v1/responses?case=prefix-openai");
+    const anthropicRouteResponse = await sendAndParse("/anthropic/v1/messages?case=prefix-anthropic");
+    const anthropicFormatResponse = await sendAndParse("/v1/messages?case=format-anthropic", { "anthropic-version": "2023-06-01" });
+    const headerProviderResponse = await sendAndParse("/custom/messages?case=header-provider", { "x-target-provider": "anthropic-auto" });
+
+    assert.deepEqual(openaiResponse.body, {
+      ok: true,
+      provider: "openai-main",
+      path: "/v1/responses?case=prefix-openai",
+      auth: "Bearer openai-token",
+      targetHeader: "",
+      requestBody: JSON.stringify({ model: "smoke", messages: [{ role: "user", content: "hello" }] })
+    });
+    assert.deepEqual(anthropicRouteResponse.body, {
+      ok: true,
+      provider: "anthropic-route",
+      path: "/v1/messages?case=prefix-anthropic",
+      auth: "route-token",
+      targetHeader: "",
+      requestBody: JSON.stringify({ model: "smoke", messages: [{ role: "user", content: "hello" }] })
+    });
+    assert.deepEqual(anthropicFormatResponse.body, {
+      ok: true,
+      provider: "anthropic-auto",
+      path: "/v1/messages?case=format-anthropic",
+      auth: "auto-token",
+      targetHeader: "",
+      requestBody: JSON.stringify({ model: "smoke", messages: [{ role: "user", content: "hello" }] })
+    });
+    assert.deepEqual(headerProviderResponse.body, {
+      ok: true,
+      provider: "anthropic-auto",
+      path: "/custom/messages?case=header-provider",
+      auth: "auto-token",
+      targetHeader: "",
+      requestBody: JSON.stringify({ model: "smoke", messages: [{ role: "user", content: "hello" }] })
+    });
+
+    assert.deepEqual(hits, [
+      { provider: "openai-main", path: "/v1/responses?case=prefix-openai", auth: "Bearer openai-token", targetHeader: "" },
+      { provider: "anthropic-route", path: "/v1/messages?case=prefix-anthropic", auth: "route-token", targetHeader: "" },
+      { provider: "anthropic-auto", path: "/v1/messages?case=format-anthropic", auth: "auto-token", targetHeader: "" },
+      { provider: "anthropic-auto", path: "/custom/messages?case=header-provider", auth: "auto-token", targetHeader: "" }
+    ]);
+  } finally {
+    await started.close();
+    started.shutdownLoop();
+    await closeServer(openai.server);
+    await closeServer(anthropicRoute.server);
+    await closeServer(anthropicAuto.server);
     await rm(dir, { recursive: true, force: true });
   }
 });

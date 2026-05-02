@@ -29,7 +29,7 @@ AgentLens 现在更适合被定义为一个本地 AI 网关工作台，而不只
 - 当前覆盖能力：
   - OpenAI / Anthropic 请求格式识别
   - 基于 Header 或路径的路由
-  - Provider 级别的上游 URL 与鉴权配置
+  - Provider 级别的上游 URL、鉴权与可选模型替换配置
   - 转发到第三方中转域名或兼容网关
 
 ### 3. Log 模块
@@ -44,6 +44,7 @@ AgentLens 现在更适合被定义为一个本地 AI 网关工作台，而不只
   - SSE 响应可以为了展示聚合，但仅限展示层
   - 展示逻辑不能改写、归一化、重建原始归档内容
   - 只有存在 archived detail 的记录才应该出现在可查看列表中
+  - 只有在 `archiveRequests=true` 时才允许进行请求体缓存；关闭归档时，代理不得保留本地原始 payload 缓存或重放缓冲
 
 ### 4. Loop 模块
 - 路径：`/__loop`

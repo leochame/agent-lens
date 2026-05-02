@@ -961,9 +961,10 @@ export function renderAdminHtml(
       width: min(1440px, calc(100vw - 36px));
       height: min(920px, calc(100vh - 36px));
       border-radius: 14px;
-      border: 1px solid var(--line);
-      background: #fff;
-      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: linear-gradient(180deg, #1c1c1c, #0b0b0b);
+      color: #ffffff;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.62);
       padding: 14px;
       display: flex;
       flex-direction: column;
@@ -975,6 +976,7 @@ export function renderAdminHtml(
       align-items: center;
       gap: 10px;
       margin-bottom: 10px;
+      color: #ffffff;
     }
     .modal-subtitle {
       margin-top: 6px;
@@ -984,6 +986,7 @@ export function renderAdminHtml(
     .modal-summary {
       margin-bottom: 10px;
       flex: 0 0 auto;
+      color: rgba(255, 255, 255, 0.86);
     }
     .detail-grid {
       flex: 1 1 auto;
@@ -997,15 +1000,15 @@ export function renderAdminHtml(
       min-height: 0;
       display: flex;
       flex-direction: column;
-      border: 1px solid var(--line);
+      border: 1px solid rgba(255, 255, 255, 0.18);
       border-radius: 12px;
       background: linear-gradient(180deg, rgba(26, 26, 26, 0.98), rgba(14, 14, 14, 0.98));
       overflow: hidden;
     }
     .detail-pane-head {
       padding: 12px 12px 10px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(28, 28, 28, 0.9);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(38, 38, 38, 0.96);
       flex: 0 0 auto;
     }
     .detail-pane-title {
@@ -1023,11 +1026,11 @@ export function renderAdminHtml(
     }
     .detail-pane-title strong {
       font-size: 14px;
-      color: #f1f1f1;
+      color: #ffffff;
     }
     .detail-pane-meta {
       font-size: 12px;
-      color: var(--muted);
+      color: rgba(255, 255, 255, 0.78);
       white-space: pre-wrap;
       overflow-wrap: anywhere;
       word-break: break-word;
@@ -1037,13 +1040,13 @@ export function renderAdminHtml(
       min-height: 0;
       padding: 12px;
       overflow: auto;
-      background: rgba(14, 14, 14, 0.96);
+      background: rgba(8, 8, 8, 0.98);
     }
     .summary-card {
       margin-bottom: 12px;
-      border: 1px solid var(--line);
+      border: 1px solid rgba(255, 255, 255, 0.18);
       border-radius: 10px;
-      background: linear-gradient(180deg, rgba(26, 26, 26, 0.98), rgba(18, 18, 18, 0.98));
+      background: linear-gradient(180deg, rgba(34, 34, 34, 0.98), rgba(16, 16, 16, 0.98));
       padding: 10px 12px;
     }
     .summary-card-head {
@@ -1054,7 +1057,7 @@ export function renderAdminHtml(
     }
     .summary-card-body {
       font-size: 14px;
-      color: #d8d8d8;
+      color: #ffffff;
       line-height: 1.75;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
@@ -1066,9 +1069,9 @@ export function renderAdminHtml(
       margin: 0;
       padding: 12px;
       border-radius: 10px;
-      border: 1px solid var(--line);
-      background: rgba(252, 247, 241, 0.98);
-      color: #251d15;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: #050505;
+      color: #ffffff;
       font-size: 12px;
       line-height: 1.45;
       overflow: auto;
@@ -1085,20 +1088,20 @@ export function renderAdminHtml(
     .json-toggle {
       border: 0;
       background: transparent;
-      color: #d2d2d2;
+      color: #ffffff;
       padding: 0 4px 0 0;
       cursor: pointer;
       font-size: 12px;
       line-height: 1;
       border-radius: 4px;
     }
-    .json-toggle:hover { background: rgba(255, 255, 255, 0.1); }
-    .json-key { color: #d6d6d6; }
-    .json-str { color: #efefef; }
-    .json-num { color: #cfcfcf; }
-    .json-bool { color: #bcbcbc; }
-    .json-null { color: #9f9f9f; }
-    .json-muted { color: #8c8c8c; }
+    .json-toggle:hover { background: rgba(255, 255, 255, 0.18); }
+    .json-key { color: #ffffff; }
+    .json-str { color: #f7f7f7; }
+    .json-num { color: #eeeeee; }
+    .json-bool { color: #e6e6e6; }
+    .json-null { color: #d8d8d8; }
+    .json-muted { color: rgba(255, 255, 255, 0.66); }
     .json-pre.collapsed {
       max-height: 220px;
     }
@@ -1108,7 +1111,7 @@ export function renderAdminHtml(
       background: rgba(20, 20, 20, 0.98);
       padding: 14px;
       font-size: 13px;
-      color: #a9a9a9;
+      color: #ffffff;
     }
     /* Final gallery pass so router/log align with the warm ivory shell used site-wide. */
     .console-split {
@@ -1364,6 +1367,7 @@ export function renderAdminHtml(
         '</div>' +
         '<div class="provider-grid">' +
         '<label class="field wide">Base URL<input data-k="baseURL" value="' + esc(p.baseURL || "") + '" placeholder="https://api.example.com" /></label>' +
+        '<label class="field wide">模型替换<input data-k="modelOverride" value="' + esc(p.modelOverride || "") + '" placeholder="留空则透传请求里的 model" /></label>' +
         '<label class="field">鉴权<select data-k="authModeKind">' +
           '<option value="inject"' + (authModeKind === "inject" ? " selected" : "") + '>注入密钥</option>' +
           '<option value="passthrough"' + (authModeKind === "passthrough" ? " selected" : "") + '>透传</option>' +
@@ -1387,7 +1391,7 @@ export function renderAdminHtml(
       const stripPrefix = Boolean(route && route.stripPrefix);
       return '<div class="provider-item route-item">' +
         '<div class="provider-head">' +
-        '<label class="field"><span class="sr-only">入口前缀</span><input data-k="pathPrefix" value="' + esc(route?.pathPrefix || "") + '" placeholder="/v1 或 /claude" /></label>' +
+        '<label class="field"><span class="sr-only">入口前缀</span><input data-k="pathPrefix" value="' + esc(route?.pathPrefix || "") + '" placeholder="/openai 或 /anthropic" /></label>' +
         '<button class="danger" data-action="remove-route">删除规则</button>' +
         '</div>' +
         '<div class="provider-grid">' +
@@ -1483,10 +1487,10 @@ export function renderAdminHtml(
       const openaiProvider = state.routing?.formatProviders?.openai || state.routing?.defaultProvider || "";
       const anthropicProvider = state.routing?.formatProviders?.anthropic || "";
       if (openaiProvider) {
-        fallback.push({ pathPrefix: "/v1", provider: openaiProvider, apiFormat: "openai", stripPrefix: true });
+        fallback.push({ pathPrefix: "/openai", provider: openaiProvider, apiFormat: "openai", stripPrefix: true });
       }
       if (anthropicProvider) {
-        fallback.push({ pathPrefix: "/claude", provider: anthropicProvider, apiFormat: "anthropic", stripPrefix: true });
+        fallback.push({ pathPrefix: "/anthropic", provider: anthropicProvider, apiFormat: "anthropic", stripPrefix: true });
       }
       return fallback;
     }
@@ -1653,6 +1657,7 @@ export function renderAdminHtml(
         providers[name] = {
           ...(prev && typeof prev === "object" ? prev : {}),
           baseURL: get("baseURL"),
+          modelOverride: get("modelOverride") || undefined,
           authMode: authModeKind === "passthrough"
             ? "passthrough"
             : preservePrevInject

@@ -232,7 +232,7 @@ test("LoggerService honors explicit apiFormat overrides for Claude-prefixed rout
     ts: new Date().toISOString(),
     requestId: "req-claude-route-1",
     method: "POST",
-    path: "/claude/v1/messages",
+    path: "/anthropic/v1/messages",
     provider: "anyrouter",
     apiFormat: "anthropic",
     headers: {},
@@ -342,4 +342,72 @@ test("LoggerService archives the original request body without rewriting it", as
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("LoggerService bounds request summary preview size for long responses-style payloads", async () => {
+  const cfg: LoggingConfig = {
+    filePath: "/tmp/agent-lens-logger-test.log",
+    archiveRequests: false
+  };
+  const logger = new LoggerService(cfg) as unknown as {
+    logRequest: (payload: {
+      ts: string;
+      requestId: string;
+      method: string;
+      path: string;
+      provider: string;
+      headers: Record<string, string>;
+      rawBody: Buffer;
+      contentType?: string;
+    }) => void;
+    writeChain: Promise<void>;
+    appendRecord: (record: {
+      systemPromptPreview?: string | null;
+      messages?: Array<{ preview?: string }>;
+      toolCalls?: Array<unknown>;
+    }) => Promise<void>;
+    appendArchiveRecord: (record: unknown, body: Buffer, contentType?: string) => Promise<void>;
+  };
+  let captured: {
+    systemPromptPreview?: string | null;
+    messages?: Array<{ preview?: string }>;
+    toolCalls?: Array<unknown>;
+  } | null = null;
+  logger.appendRecord = async (record) => {
+    captured = record;
+  };
+  logger.appendArchiveRecord = async () => {};
+
+  const longText = "x".repeat(12000);
+  const input = Array.from({ length: 80 }, (_, i) => ({
+    role: i % 2 === 0 ? "user" : "assistant",
+    content: longText
+  }));
+
+  logger.logRequest({
+    ts: new Date().toISOString(),
+    requestId: "req-long-summary-1",
+    method: "POST",
+    path: "/v1/responses",
+    provider: "openai",
+    headers: {},
+    rawBody: Buffer.from(JSON.stringify({
+      model: "gpt-5.4",
+      stream: true,
+      instructions: longText,
+      input
+    }), "utf8"),
+    contentType: "application/json"
+  });
+
+  await logger.writeChain;
+  assert.ok(captured);
+  const result = captured as {
+    systemPromptPreview?: string | null;
+    messages?: Array<{ preview?: string }>;
+    toolCalls?: Array<unknown>;
+  };
+  assert.equal((result.systemPromptPreview || "").length <= 4000, true);
+  assert.equal((result.messages || []).length <= 24, true);
+  assert.equal((result.messages || []).every((item: { preview?: string }) => (item.preview || "").length <= 2400), true);
 });

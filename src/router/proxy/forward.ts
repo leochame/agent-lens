@@ -1,4 +1,6 @@
 import http, { ClientRequest, IncomingHttpHeaders, IncomingMessage, RequestOptions, ServerResponse } from "node:http";
+import { createReadStream } from "node:fs";
+import { readFile } from "node:fs/promises";
 import https from "node:https";
 import { URL } from "node:url";
 import { RoutingDecision } from "../provider/types";
@@ -6,10 +8,12 @@ import { RoutingDecision } from "../provider/types";
 type ForwardRequest = {
   req: IncomingMessage;
   res: ServerResponse;
-  body: Buffer;
   decision: RoutingDecision;
   timeoutMs: number;
   maxCaptureBytes: number;
+  providerNameHeader?: string;
+  requestBodyFilePath?: string;
+  requestBodyReady?: Promise<void>;
 };
 
 export type ForwardResult = {
@@ -86,8 +90,166 @@ function buildForwardHeaders(
   return out;
 }
 
+function canReplayRequestBody(input: ForwardRequest): boolean {
+  return Boolean(input.requestBodyFilePath && input.requestBodyReady);
+}
+
+function canRetryRequest(input: ForwardRequest, attempt: number): boolean {
+  if (attempt >= MAX_UPSTREAM_RETRY_ATTEMPTS || input.res.headersSent) {
+    return false;
+  }
+  const method = String(input.req.method || "GET").toUpperCase();
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
+    return true;
+  }
+  return canReplayRequestBody(input);
+}
+
+function requestMayHaveBody(req: IncomingMessage): boolean {
+  const method = String(req.method || "GET").toUpperCase();
+  return method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
+}
+
+function getHeaderValue(headers: IncomingHttpHeaders, name: string): string {
+  const value = headers[name.toLowerCase()];
+  return Array.isArray(value) ? String(value[0] || "") : String(value || "");
+}
+
+function hasUnsupportedRequestEncoding(headers: IncomingHttpHeaders): boolean {
+  const contentEncoding = getHeaderValue(headers, "content-encoding").trim().toLowerCase();
+  return Boolean(contentEncoding && contentEncoding !== "identity");
+}
+
+function isAnthropicRequest(req: IncomingMessage, decision: RoutingDecision): boolean {
+  if (decision.apiFormat === "anthropic") {
+    return true;
+  }
+  if (req.headers["anthropic-version"]) {
+    return true;
+  }
+  const path = (decision.targetPathWithQuery || req.url || "/").split("?")[0];
+  return path === "/v1/messages" || path === "/v1/complete";
+}
+
+function collectIncomingBody(req: IncomingMessage): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let settled = false;
+
+    const cleanup = (): void => {
+      req.off("data", onData);
+      req.off("end", onEnd);
+      req.off("error", onError);
+      req.off("aborted", onAborted);
+    };
+    const settleResolve = (body: Buffer): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve(body);
+    };
+    const settleReject = (error: Error): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const onData = (chunk: Buffer | string): void => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    };
+    const onEnd = (): void => {
+      settleResolve(Buffer.concat(chunks));
+    };
+    const onError = (error: Error): void => {
+      settleReject(error);
+    };
+    const onAborted = (): void => {
+      settleReject(new Error("Downstream request aborted"));
+    };
+
+    req.on("data", onData);
+    req.on("end", onEnd);
+    req.on("error", onError);
+    req.on("aborted", onAborted);
+  });
+}
+
+async function readOriginalRequestBody(input: ForwardRequest): Promise<Buffer> {
+  if (input.requestBodyFilePath && input.requestBodyReady) {
+    await input.requestBodyReady;
+    return readFile(input.requestBodyFilePath);
+  }
+  return collectIncomingBody(input.req);
+}
+
+function rewriteAnthropicModelBody(rawBody: Buffer, modelOverride: string): Buffer {
+  const rawText = rawBody.toString("utf8");
+  try {
+    const parsed = JSON.parse(rawText) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return rawBody;
+    }
+    const rewritten = { ...(parsed as Record<string, unknown>), model: modelOverride };
+    return Buffer.from(JSON.stringify(rewritten), "utf8");
+  } catch {
+    return rawBody;
+  }
+}
+
+function shouldPrepareAnthropicModelOverride(input: ForwardRequest): boolean {
+  const modelOverride = input.decision.provider.modelOverride?.trim();
+  return Boolean(
+    modelOverride
+      && requestMayHaveBody(input.req)
+      && isAnthropicRequest(input.req, input.decision)
+      && !hasUnsupportedRequestEncoding(input.req.headers)
+  );
+}
+
+function prepareUpstreamBody(input: ForwardRequest): Promise<Buffer> | null {
+  const modelOverride = input.decision.provider.modelOverride?.trim();
+  if (!modelOverride || !shouldPrepareAnthropicModelOverride(input)) {
+    return null;
+  }
+  return readOriginalRequestBody(input).then((rawBody) => rewriteAnthropicModelBody(rawBody, modelOverride));
+}
+
+function buildRequestOptions(
+  base: URL,
+  isHttps: boolean,
+  method: string | undefined,
+  upstreamPath: string,
+  headers: IncomingHttpHeaders,
+  timeoutMs: number,
+  upstreamBody: Buffer | null
+): RequestOptions {
+  const requestHeaders = upstreamBody
+    ? {
+        ...headers,
+        "content-length": String(upstreamBody.length),
+        "transfer-encoding": undefined
+      }
+    : headers;
+  if (upstreamBody) {
+    delete requestHeaders["transfer-encoding"];
+  }
+  return {
+    protocol: base.protocol,
+    hostname: base.hostname,
+    port: base.port ? Number(base.port) : isHttps ? 443 : 80,
+    method,
+    path: upstreamPath,
+    headers: requestHeaders,
+    timeout: timeoutMs
+  };
+}
+
 export function forwardRequest(input: ForwardRequest): Promise<ForwardResult> {
-  const { req, res, body, decision, timeoutMs } = input;
+  const { req, res, decision, timeoutMs } = input;
   const base = new URL(decision.provider.baseURL);
   const isHttps = base.protocol === "https:";
   const requestedPath = `${decision.targetPathWithQuery || "/"}`;
@@ -101,7 +263,7 @@ export function forwardRequest(input: ForwardRequest): Promise<ForwardResult> {
         : `${basePath}${normalizedRequestedPath}`;
 
   const upstreamHost = base.host;
-  const headers = buildForwardHeaders(req.headers, upstreamHost, decision.provider.hostHeader, undefined);
+  const headers = buildForwardHeaders(req.headers, upstreamHost, decision.provider.hostHeader, input.providerNameHeader);
 
   if (decision.provider.authMode && decision.provider.authMode !== "passthrough") {
     const directValue = decision.provider.authMode.value;
@@ -120,17 +282,8 @@ export function forwardRequest(input: ForwardRequest): Promise<ForwardResult> {
     }
   }
 
-  const options: RequestOptions = {
-    protocol: base.protocol,
-    hostname: base.hostname,
-    port: base.port ? Number(base.port) : isHttps ? 443 : 80,
-    method: req.method,
-    path: upstreamPath,
-    headers,
-    timeout: timeoutMs
-  };
-
   const client = isHttps ? https : http;
+  const upstreamBodyPromise = prepareUpstreamBody(input);
 
   return new Promise<ForwardResult>((resolve, reject) => {
     let settled = false;
@@ -165,12 +318,23 @@ export function forwardRequest(input: ForwardRequest): Promise<ForwardResult> {
       destroyUpstream("Downstream request aborted");
     };
     const onResClose = (): void => {
-      if (!res.writableEnded) {
+      if (req.aborted && !res.writableEnded) {
         destroyUpstream("Downstream response connection closed");
       }
     };
 
     const sendAttempt = (): void => {
+      void sendAttemptAsync().catch((error) => {
+        settleReject(error instanceof Error ? error : new Error(String(error)));
+      });
+    };
+
+    const sendAttemptAsync = async (): Promise<void> => {
+      const upstreamBody = upstreamBodyPromise ? await upstreamBodyPromise : null;
+      if (settled) {
+        return;
+      }
+      const options = buildRequestOptions(base, isHttps, req.method, upstreamPath, headers, timeoutMs, upstreamBody);
       let retryScheduledByTimeout = false;
       const request = client.request(options, (upstreamRes) => {
         if (request !== upstreamReq) {
@@ -178,7 +342,7 @@ export function forwardRequest(input: ForwardRequest): Promise<ForwardResult> {
           return;
         }
         const statusCode = upstreamRes.statusCode;
-        if (attempt < MAX_UPSTREAM_RETRY_ATTEMPTS && isRetryableStatus(statusCode) && !res.headersSent) {
+        if (canRetryRequest(input, attempt) && isRetryableStatus(statusCode)) {
           const delayMs = retryDelayMs(statusCode, upstreamRes.headers, attempt);
           upstreamRes.resume();
           attempt += 1;
@@ -206,12 +370,6 @@ export function forwardRequest(input: ForwardRequest): Promise<ForwardResult> {
 
         upstreamRes.on("data", (chunk) => {
           const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-          // maxBytes <= 0 means unlimited capture (full archive mode).
-          if (maxBytes <= 0) {
-            captured.push(b);
-            capturedBytes += b.length;
-            return;
-          }
           if (truncated) {
             return;
           }
@@ -269,7 +427,7 @@ export function forwardRequest(input: ForwardRequest): Promise<ForwardResult> {
         if (request !== upstreamReq) {
           return;
         }
-        if (attempt < MAX_UPSTREAM_RETRY_ATTEMPTS && !res.headersSent) {
+        if (canRetryRequest(input, attempt)) {
           const delayMs = exponentialBackoffMs(attempt);
           attempt += 1;
           retryScheduledByTimeout = true;
@@ -294,7 +452,7 @@ export function forwardRequest(input: ForwardRequest): Promise<ForwardResult> {
         if (retryScheduledByTimeout) {
           return;
         }
-        if (attempt < MAX_UPSTREAM_RETRY_ATTEMPTS && !res.headersSent) {
+        if (canRetryRequest(input, attempt)) {
           const delayMs = exponentialBackoffMs(attempt);
           attempt += 1;
           setTimeout(() => {
@@ -307,8 +465,47 @@ export function forwardRequest(input: ForwardRequest): Promise<ForwardResult> {
         settleReject(error);
       });
 
-      request.write(body);
-      request.end();
+      if (upstreamBody) {
+        request.end(upstreamBody);
+        return;
+      }
+
+      if (attempt === 1) {
+        req.pipe(request);
+        return;
+      }
+
+      const method = String(input.req.method || "GET").toUpperCase();
+      if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
+        request.end();
+        return;
+      }
+
+      if (!input.requestBodyReady) {
+        request.destroy(new Error("Request body replay cache unavailable"));
+        return;
+      }
+
+      void input.requestBodyReady
+        .then(() => {
+          if (settled || request !== upstreamReq) {
+            return;
+          }
+          const replay = createReadStream(input.requestBodyFilePath!);
+          replay.on("error", (error) => {
+            if (request !== upstreamReq || settled) {
+              return;
+            }
+            request.destroy(error instanceof Error ? error : new Error(String(error)));
+          });
+          replay.pipe(request);
+        })
+        .catch((error) => {
+          if (request !== upstreamReq || settled) {
+            return;
+          }
+          request.destroy(error instanceof Error ? error : new Error(String(error)));
+        });
     };
 
     req.on("aborted", onReqAborted);

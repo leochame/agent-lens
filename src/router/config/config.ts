@@ -141,6 +141,11 @@ export function loadConfig(): AppConfig {
       : 120000;
 
   resolved.requestTimeoutMs = Number.isFinite(normalizedTimeout) ? normalizedTimeout : 120000;
+  if ((resolved.requestTimeoutMs ?? 0) > 3600000) {
+    console.warn(
+      `[agent-lens] requestTimeoutMs=${resolved.requestTimeoutMs}ms is unusually high; long-lived stuck upstream requests may accumulate`
+    );
+  }
 
   const logging = (resolved.logging && typeof resolved.logging === "object"
     ? resolved.logging

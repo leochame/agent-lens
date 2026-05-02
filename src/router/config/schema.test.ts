@@ -9,8 +9,8 @@ function validConfig(): AppConfig {
     routing: {
       defaultProvider: "openai",
       routes: [
-        { pathPrefix: "/v1", provider: "openai", apiFormat: "openai", stripPrefix: true },
-        { pathPrefix: "/claude", provider: "anthropic", apiFormat: "anthropic", stripPrefix: true }
+        { pathPrefix: "/openai", provider: "openai", apiFormat: "openai", stripPrefix: true },
+        { pathPrefix: "/anthropic", provider: "anthropic", apiFormat: "anthropic", stripPrefix: true }
       ],
       formatProviders: {
         openai: "openai",
@@ -54,6 +54,18 @@ test("validateConfig rejects invalid pathRewrite rules", () => {
   assert.throws(() => validateConfig(cfg), /pathRewrite\[0\]\.from must start with/);
 });
 
+test("validateConfig accepts provider model overrides", () => {
+  const cfg = validConfig();
+  cfg.providers.anthropic.modelOverride = "glm-5.1";
+  assert.equal(validateConfig(cfg), cfg);
+});
+
+test("validateConfig rejects non-string provider model overrides", () => {
+  const cfg = validConfig();
+  cfg.providers.anthropic.modelOverride = 123 as never;
+  assert.throws(() => validateConfig(cfg), /providers\.anthropic\.modelOverride must be a string/);
+});
+
 test("validateConfig rejects unknown byPathPrefix provider", () => {
   const cfg = validConfig();
   cfg.routing.byPathPrefix = { "/x": "missing-provider" };
@@ -62,6 +74,6 @@ test("validateConfig rejects unknown byPathPrefix provider", () => {
 
 test("validateConfig rejects invalid route rules", () => {
   const cfg = validConfig();
-  cfg.routing.routes = [{ pathPrefix: "claude", provider: "missing", apiFormat: "unknown" as never }];
+  cfg.routing.routes = [{ pathPrefix: "anthropic", provider: "missing", apiFormat: "unknown" as never }];
   assert.throws(() => validateConfig(cfg), /routing\.routes\[0\]\.pathPrefix must start with '\//);
 });

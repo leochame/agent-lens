@@ -20,6 +20,7 @@
 - `archiveRequests` is a product toggle controlled from the frontend admin UI.
 - Toggling `archiveRequests` controls whether raw request/response payloads are archived; it must not silently redefine the product requirement that logs are viewable in admin.
 - When `archiveRequests` is disabled, raw request/response payloads must not be archived, retained locally as detail payloads, or reconstructed later from summary logs.
+- When `archiveRequests` is disabled, the proxy must not create or retain request-body cache files, temp replay buffers, or any other local raw-payload cache.
 - The admin frontend must display only records that have archived request/response detail available; if a record is not archived, it should not appear as a viewable detail item.
 - The routing module must allow configuring upstream URL and API key/secret for both OpenAI and Anthropic style routes.
 - After optional archive capture, forwarding must remain transparent; the proxy must not do extra post-archive processing on the request before forwarding.

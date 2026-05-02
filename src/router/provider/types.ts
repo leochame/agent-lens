@@ -26,6 +26,7 @@ export type ProviderConfig = {
   baseURL: string;
   hostHeader?: string;
   authMode?: AuthMode;
+  modelOverride?: string;
   pathRewrite?: PathRewriteRule[];
 };
 

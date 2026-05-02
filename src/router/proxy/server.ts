@@ -1,6 +1,9 @@
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { URL } from "node:url";
 import { dirname, join } from "node:path";
+import { createWriteStream } from "node:fs";
+import { mkdtemp, open, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { AppConfig, RoutingDecision } from "../provider/types";
 import { resolveRouting } from "../provider/router";
 import { LoggerService } from "../../log/service/logger";
@@ -79,6 +82,86 @@ function collectBody(req: IncomingMessage, maxBytes = 0): Promise<Buffer> {
   });
 }
 
+type RequestBodyCache = {
+  filePath: string;
+  ready: Promise<void>;
+  readForLog: (maxBytes: number) => Promise<Buffer>;
+  cleanup: () => Promise<void>;
+};
+
+type RequestBodyCacheHandle = RequestBodyCache | null;
+
+async function createRequestBodyCache(req: IncomingMessage): Promise<RequestBodyCache> {
+  const dir = await mkdtemp(join(tmpdir(), "agentlens-request-"));
+  const filePath = join(dir, "body.bin");
+  const writer = createWriteStream(filePath);
+
+  const ready = new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const settleResolve = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve();
+    };
+    const settleReject = (error: Error): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const cleanup = (): void => {
+      writer.off("finish", settleResolve);
+      writer.off("error", onWriterError);
+      req.off("aborted", onReqAborted);
+      req.off("error", onReqError);
+    };
+    const onWriterError = (error: Error): void => {
+      settleReject(error);
+    };
+    const onReqAborted = (): void => {
+      writer.destroy(new Error("Downstream request aborted"));
+    };
+    const onReqError = (error: Error): void => {
+      writer.destroy(error);
+    };
+
+    writer.on("finish", settleResolve);
+    writer.on("error", onWriterError);
+    req.on("aborted", onReqAborted);
+    req.on("error", onReqError);
+  });
+
+  req.pipe(writer);
+
+  return {
+    filePath,
+    ready,
+    readForLog: async (maxBytes: number): Promise<Buffer> => {
+      await ready;
+      if (maxBytes <= 0) {
+        return readFile(filePath);
+      }
+      const handle = await open(filePath, "r");
+      try {
+        const buffer = Buffer.allocUnsafe(maxBytes);
+        const { bytesRead } = await handle.read(buffer, 0, maxBytes, 0);
+        return buffer.subarray(0, bytesRead);
+      } finally {
+        await handle.close();
+      }
+    },
+    cleanup: async (): Promise<void> => {
+      writer.destroy();
+      await rm(dir, { recursive: true, force: true });
+    }
+  };
+}
+
 function writeProxyError(res: ServerResponse, statusCode: number, requestId: string, message: string): void {
   if (res.headersSent) {
     res.end();
@@ -91,6 +174,23 @@ function writeProxyError(res: ServerResponse, statusCode: number, requestId: str
       requestId
     })
   );
+}
+
+function summarizeProxyFailure(error: unknown, decision: RoutingDecision | null): string {
+  const providerName = decision?.providerName ?? "unknown";
+  const upstream = decision?.provider?.baseURL ?? "unknown upstream";
+  const rawMessage =
+    error instanceof Error
+      ? String(error.message || "").trim()
+      : typeof error === "string"
+        ? error.trim()
+        : "";
+  const errno =
+    error && typeof error === "object" && "code" in error && typeof (error as { code?: unknown }).code === "string"
+      ? (error as { code: string }).code
+      : "";
+  const detail = rawMessage || errno || "transport failure";
+  return `Gateway error contacting provider "${providerName}" at ${upstream}: ${detail}`;
 }
 
 function writeJson(res: ServerResponse, statusCode: number, body: unknown): void {
@@ -113,6 +213,14 @@ export type StartedServer = {
   close: () => Promise<void>;
   shutdownLoop: () => void;
 };
+
+export function lightweightHash(input: string): number {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
+  }
+  return hash;
+}
 
 export function parseOptionalLimit(value: unknown, fallback: number, min: number, max: number): number {
   if (value === undefined || value === null) {
@@ -280,14 +388,15 @@ async function handleAdmin(req: IncomingMessage, res: ServerResponse, state: Run
     });
     res.write("retry: 1500\n\n");
 
-    let lastItemsPayload = "";
+    let lastItemsHash = 0;
     const send = async (): Promise<void> => {
       const items = await loadPairedLogs(state.logFilePath, limit, apiFormat);
       const itemsPayload = JSON.stringify(items);
-      if (itemsPayload === lastItemsPayload) {
+      const hash = lightweightHash(itemsPayload);
+      if (hash === lastItemsHash) {
         return;
       }
-      lastItemsPayload = itemsPayload;
+      lastItemsHash = hash;
       const payload = JSON.stringify({ items, apiFormat, generatedAt: new Date().toISOString() });
       res.write(`event: logs\ndata: ${payload}\n\n`);
     };
@@ -300,7 +409,6 @@ async function handleAdmin(req: IncomingMessage, res: ServerResponse, state: Run
 
     req.on("close", () => {
       clearInterval(timer);
-      res.end();
     });
     return true;
   }
@@ -346,6 +454,7 @@ async function handleAdmin(req: IncomingMessage, res: ServerResponse, state: Run
 
     try {
       await saveConfig(state.configPath, nextConfig);
+      await state.logger.drain();
       state.config = nextConfig;
       state.logFilePath = resolveLogFilePath(state.configPath, state.config.logging.filePath);
       state.logger = new LoggerService({
@@ -537,14 +646,15 @@ async function handleLoop(req: IncomingMessage, res: ServerResponse, state: Runt
     });
     res.write("retry: 1200\n\n");
 
-    let lastItemsPayload = "";
+    let lastItemsHash = 0;
     const send = (): void => {
       const items = state.loopScheduler.listLiveRuns(limit);
       const itemsPayload = JSON.stringify(items);
-      if (itemsPayload === lastItemsPayload) {
+      const hash = lightweightHash(itemsPayload);
+      if (hash === lastItemsHash) {
         return;
       }
-      lastItemsPayload = itemsPayload;
+      lastItemsHash = hash;
       const body = JSON.stringify({ items, generatedAt: new Date().toISOString() });
       res.write(`event: live-runs\ndata: ${body}\n\n`);
     };
@@ -554,7 +664,6 @@ async function handleLoop(req: IncomingMessage, res: ServerResponse, state: Runt
 
     req.on("close", () => {
       clearInterval(timer);
-      res.end();
     });
     return true;
   }
@@ -585,14 +694,15 @@ async function handleLoop(req: IncomingMessage, res: ServerResponse, state: Runt
     });
     res.write("retry: 1200\n\n");
 
-    let lastItemPayload = "";
+    let lastItemHash = 0;
     const send = (): void => {
       const item = buildLoopStateSnapshot(state.loopScheduler, limits);
       const itemPayload = JSON.stringify(item);
-      if (itemPayload === lastItemPayload) {
+      const hash = lightweightHash(itemPayload);
+      if (hash === lastItemHash) {
         return;
       }
-      lastItemPayload = itemPayload;
+      lastItemHash = hash;
       const body = JSON.stringify({ item, generatedAt: new Date().toISOString() });
       res.write(`event: loop-state\ndata: ${body}\n\n`);
     };
@@ -601,7 +711,6 @@ async function handleLoop(req: IncomingMessage, res: ServerResponse, state: Runt
     send();
     req.on("close", () => {
       clearInterval(timer);
-      res.end();
     });
     return true;
   }
@@ -836,52 +945,62 @@ export async function startServer(config: AppConfig, configPath: string): Promis
         return;
       }
 
-      const body = await collectBody(req);
       decision = resolveRouting(state.config, req);
       const contentType = Array.isArray(req.headers["content-type"])
         ? req.headers["content-type"][0]
         : req.headers["content-type"];
+      const requestBodyCache: RequestBodyCacheHandle = state.config.logging.archiveRequests
+        ? await createRequestBodyCache(req)
+        : null;
 
-      state.logger.logRequest({
-        ts: new Date().toISOString(),
-        requestId,
-        method: req.method ?? "GET",
-        path: req.url ?? "/",
-        provider: decision.providerName,
-        apiFormat: decision.apiFormat,
-        headers: req.headers,
-        rawBody: body,
-        contentType
-      });
+      try {
+        const maxCaptureBytes = state.config.logging.archiveRequests
+          ? Math.max(0, state.config.logging.maxArchiveBodyBytes ?? 10 * 1024 * 1024)
+          : Math.max(0, state.config.logging.maxBodyBytes ?? 65536);
 
-      const maxCaptureBytes = state.config.logging.archiveRequests
-        ? 0
-        : Math.max(0, state.config.logging.maxBodyBytes ?? 65536);
+        const response = await forwardRequest({
+          req,
+          res,
+          decision,
+          timeoutMs: state.config.requestTimeoutMs ?? 120000,
+          maxCaptureBytes,
+          providerNameHeader: state.config.routing.byHeader,
+          requestBodyFilePath: requestBodyCache?.filePath,
+          requestBodyReady: requestBodyCache?.ready
+        });
 
-      const response = await forwardRequest({
-        req,
-        res,
-        body,
-        decision,
-        timeoutMs: state.config.requestTimeoutMs ?? 120000,
-        // When archive is disabled, keep response capture bounded to avoid unbounded memory use.
-        // <= 0 means unlimited in forwardRequest.
-        maxCaptureBytes
-      });
+        const rawRequestBody = requestBodyCache
+          ? await requestBodyCache.readForLog(0)
+          : Buffer.alloc(0);
 
-      state.logger.logResponse({
-        ts: new Date().toISOString(),
-        requestId,
-        method: req.method ?? "GET",
-        path: req.url ?? "/",
-        provider: decision.providerName,
-        apiFormat: decision.apiFormat,
-        statusCode: response.statusCode,
-        headers: response.headers,
-        rawBody: response.responseBody,
-        contentType: response.contentType,
-        truncated: response.truncated
-      });
+        state.logger.logRequest({
+          ts: new Date().toISOString(),
+          requestId,
+          method: req.method ?? "GET",
+          path: req.url ?? "/",
+          provider: decision.providerName,
+          apiFormat: decision.apiFormat,
+          headers: req.headers,
+          rawBody: rawRequestBody,
+          contentType
+        });
+
+        state.logger.logResponse({
+          ts: new Date().toISOString(),
+          requestId,
+          method: req.method ?? "GET",
+          path: req.url ?? "/",
+          provider: decision.providerName,
+          apiFormat: decision.apiFormat,
+          statusCode: response.statusCode,
+          headers: response.headers,
+          rawBody: response.responseBody,
+          contentType: response.contentType,
+          truncated: response.truncated
+        });
+      } finally {
+        await requestBodyCache?.cleanup();
+      }
     } catch (error) {
       if (error instanceof PayloadTooLargeError) {
         if (!res.headersSent) {
@@ -889,7 +1008,12 @@ export async function startServer(config: AppConfig, configPath: string): Promis
         }
         return;
       }
-      const message = error instanceof Error ? error.message : String(error);
+      let message: string;
+      if (decision) {
+        message = summarizeProxyFailure(error, decision);
+      } else {
+        message = error instanceof Error ? error.message : String(error);
+      }
       const isTimeout = message.toLowerCase().includes("timed out");
       const code = isTimeout ? 504 : 502;
       state.logger.logResponse({
@@ -924,7 +1048,11 @@ export async function startServer(config: AppConfig, configPath: string): Promis
   return {
     close: () =>
       new Promise<void>((resolve) => {
-        server.close(() => resolve());
+        server.close(async () => {
+          await state.logger.drain();
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          resolve();
+        });
       }),
     shutdownLoop: () => {
       loopScheduler.shutdown();

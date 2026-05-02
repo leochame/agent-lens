@@ -1,6 +1,11 @@
 import { IncomingMessage } from "node:http";
 import { URL } from "node:url";
-import { AppConfig, RouteRule, RoutingDecision } from "./types";
+import { AppConfig, ProviderApiFormat, RouteRule, RoutingDecision } from "./types";
+
+type ProviderSelection = {
+  providerName: string;
+  apiFormat?: ProviderApiFormat;
+};
 
 function rewritePath(pathWithQuery: string, from: string, to: string): string {
   const [pathname, ...queryParts] = pathWithQuery.split("?");
@@ -65,10 +70,9 @@ function stripRoutePrefix(pathWithQuery: string, prefix: string): string {
   return pathWithQuery;
 }
 
-function selectProviderName(config: AppConfig, req: IncomingMessage): string {
-  const route = findRouteRule(config, req);
+function selectProvider(config: AppConfig, req: IncomingMessage, route: RouteRule | null): ProviderSelection {
   if (route) {
-    return route.provider;
+    return { providerName: route.provider, apiFormat: route.apiFormat };
   }
 
   const byHeader = config.routing.byHeader?.toLowerCase();
@@ -79,14 +83,20 @@ function selectProviderName(config: AppConfig, req: IncomingMessage): string {
     const v = req.headers[byHeader];
     const chosen = Array.isArray(v) ? v[0] : v;
     if (chosen && config.providers[chosen]) {
-      return chosen;
+      return { providerName: chosen };
     }
   }
 
+  let longestPrefix = "";
+  let longestProvider: string | undefined;
   for (const [prefix, providerName] of Object.entries(byPathPrefix)) {
-    if (reqUrl.startsWith(prefix) && config.providers[providerName]) {
-      return providerName;
+    if (reqUrl.startsWith(prefix) && config.providers[providerName] && prefix.length > longestPrefix.length) {
+      longestPrefix = prefix;
+      longestProvider = providerName;
     }
+  }
+  if (longestProvider) {
+    return { providerName: longestProvider };
   }
 
   if (config.routing.autoDetectProviderByFormat) {
@@ -96,10 +106,10 @@ function selectProviderName(config: AppConfig, req: IncomingMessage): string {
     }
   }
 
-  return config.routing.defaultProvider;
+  return { providerName: config.routing.defaultProvider };
 }
 
-function detectByFormat(config: AppConfig, req: IncomingMessage): string | null {
+function detectByFormat(config: AppConfig, req: IncomingMessage): ProviderSelection | null {
   const reqUrl = req.url ?? "/";
   const path = reqUrl.split("?")[0];
   const hasAnthropicVersion = Boolean(req.headers["anthropic-version"]);
@@ -109,7 +119,7 @@ function detectByFormat(config: AppConfig, req: IncomingMessage): string | null 
 
   const anthropicPath = path === "/v1/messages" || path === "/v1/complete";
   if ((hasAnthropicVersion || anthropicPath) && anthProvider && config.providers[anthProvider]) {
-    return anthProvider;
+    return { providerName: anthProvider, apiFormat: "anthropic" };
   }
 
   const openaiPaths = [
@@ -131,7 +141,7 @@ function detectByFormat(config: AppConfig, req: IncomingMessage): string | null 
     "/fine_tuning"
   ];
   if (openaiPaths.some((p) => path.startsWith(p)) && openaiProvider && config.providers[openaiProvider]) {
-    return openaiProvider;
+    return { providerName: openaiProvider, apiFormat: "openai" };
   }
 
   return null;
@@ -139,7 +149,8 @@ function detectByFormat(config: AppConfig, req: IncomingMessage): string | null 
 
 export function resolveRouting(config: AppConfig, req: IncomingMessage): RoutingDecision {
   const route = findRouteRule(config, req);
-  const providerName = selectProviderName(config, req);
+  const selection = selectProvider(config, req, route);
+  const providerName = selection.providerName;
   const provider = config.providers[providerName];
   if (!provider) {
     throw new Error(`Provider not found: ${providerName}`);
@@ -161,7 +172,7 @@ export function resolveRouting(config: AppConfig, req: IncomingMessage): Routing
   return {
     providerName,
     provider,
-    apiFormat: route?.apiFormat ?? "unknown",
+    apiFormat: selection.apiFormat ?? "unknown",
     targetPathWithQuery
   };
 }

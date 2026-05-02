@@ -48,6 +48,7 @@ test("renderAdminHtml router page keeps only primary state and action copy", () 
   assert.match(html, /Routing/);
   assert.match(html, /Providers/);
   assert.match(html, /添加上游/);
+  assert.match(html, /模型替换/);
   assert.doesNotMatch(html, /建议先设置默认上游/);
   assert.doesNotMatch(html, /保存配置会写回配置文件并立即生效/);
 });

@@ -1,15 +1,15 @@
 listen:
-  host: 127.0.0.1
+  host: 0.0.0.0
   port: 5290
 routing:
   defaultProvider: ruoli.dev - gpt
   routes:
-    - pathPrefix: /v1
-      provider: ruoli.dev - gpt
+    - pathPrefix: /openai
+      provider: https://windhub.cc
       apiFormat: openai
       stripPrefix: true
-    - pathPrefix: /claude
-      provider: anyrouter
+    - pathPrefix: /anthropic
+      provider: https://zhiyingai.online
       apiFormat: anthropic
       stripPrefix: true
   byHeader: x-target-provider
@@ -19,44 +19,64 @@ routing:
     anthropic: anyrouter
     openai: ruoli.dev - gpt
 providers:
-  sillydream:
-    baseURL: https://f.sillydream.top/v1
-    authMode:
-      type: inject
-      header: authorization
-      value: sk-PK2SCdu1yxMjPcVdBxtXtJehOnEfUTcKsNyH1X0V8LVh6veZ
-      valuePrefix: "Bearer "
-    pathRewrite: []
   ruoli.dev - gpt:
     baseURL: https://ruoli.dev/v1
     authMode:
       type: inject
       header: authorization
-      value: sk-QhyVfGIvjSVIRC2OhLeg8uMi3DRrHgVjuwdpk2Ya3IkPBS3F
+      value: ${RUOLI_GPT_API_KEY:-}
       valuePrefix: "Bearer "
     pathRewrite: []
   anyrouter:
     baseURL: https://anyrouter.top
+    modelOverride: claude-opus-4.7[1M]
     authMode:
       type: inject
       header: x-api-key
-      value: sk-BmkEVy8HvASu0PYdyedywMGTcOFJBmj8WFAs8kitizlrCDzN
+      value: sk-2OJgg2pvHFeFVJN2T7g6bfIIIgWBgUr5tEHGiLUy6KdS18CP
     pathRewrite: []
-  windhub:
+  智谱-ruoli:
+    baseURL: https://ruoli.dev
+    modelOverride: deepseek-expert-reasoner
+    authMode:
+      type: inject
+      header: authorization
+      value: sk-kkDAWeNjXExZf2zLHtcpO35SAEpMLrJm6JX56gjwtmzDF1PI
+      valuePrefix: "Bearer "
+    pathRewrite: []
+  https://windhub.cc:
     baseURL: https://windhub.cc/v1
     authMode:
       type: inject
       header: authorization
-      value: sk-nOSugbsMiXfkRq8Li8PLYFywqOFHPHCRk5b1qCpwU1hZFiTI
+      value: sk-FFPm6nP0S2Yr8TobzoKanxPclsISEZFOvvg7nSkIsrO4m00M
+      valuePrefix: "Bearer "
+    pathRewrite: []
+    modelOverride: gpt-5.4
+  https://zhiyingai.online:
+    baseURL: https://zhiyingai.online
+    modelOverride: glm-5.1
+    authMode:
+      type: inject
+      header: authorization
+      value: sk-BRsqqUyRFpPZKbASBKCpIDyvKMchB08PqMHzDJgkfPmEECSY
+      valuePrefix: "Bearer "
+    pathRewrite: []
+  https://api.xixixixi.cloud:
+    baseURL: https://api.xixixixi.cloud
+    authMode:
+      type: inject
+      header: authorization
+      value: sk-zhBsrproC2i2U1D0pFkCa8a6S4WFOVYuZTaCZsey8S4gD96j
       valuePrefix: "Bearer "
     pathRewrite: []
 logging:
   filePath: ./logs/requests.jsonl
-  archiveRequests: false
+  archiveRequests: true
   maxArchiveBodyBytes: 0
   redactHeaders:
     - authorization
     - x-api-key
     - cookie
     - set-cookie
-requestTimeoutMs: 120000000
+requestTimeoutMs: 120000

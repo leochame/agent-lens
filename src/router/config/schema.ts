@@ -63,6 +63,9 @@ export function validateConfig(input: AppConfig): AppConfig {
         assert(rule.to.startsWith("/"), `providers.${name}.pathRewrite[${idx}].to must start with '/'`);
       }
     }
+    if (provider.modelOverride !== undefined) {
+      assert(typeof provider.modelOverride === "string", `providers.${name}.modelOverride must be a string`);
+    }
   }
 
   const pathPrefix = input.routing.byPathPrefix ?? {};

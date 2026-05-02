@@ -37,7 +37,7 @@ type AnthropicModelClientOptions = {
 const OPENAI_DEFAULT_BASE_URL = "https://api.openai.com";
 const OPENAI_DEFAULT_MODEL = "gpt-4.1-mini";
 const ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com";
-const ANTHROPIC_DEFAULT_MODEL = "claude-3-5-haiku-latest";
+const ANTHROPIC_DEFAULT_MODEL = "glm-5.1";
 const ANTHROPIC_DEFAULT_MAX_TOKENS = 1024;
 
 function normalizeBaseURL(value: string | undefined, fallback: string): string {
