@@ -1,3 +1,6 @@
 node_modules/
 dist/
 logs/
+
+# Config - contains API keys, do not commit
+config/default.yaml
