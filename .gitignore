@@ -11,3 +11,4 @@ logs/
 
 # Config
 config/default.yaml
+config/.env

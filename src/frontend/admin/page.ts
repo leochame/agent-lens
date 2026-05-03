@@ -1614,6 +1614,12 @@ export function renderAdminHtml(
         ? (p.authMode.value || "")
         : "";
       const authModeKind = p.authMode === "passthrough" ? "passthrough" : "inject";
+      const keyValue = typeof p.authMode === "object" && p.authMode.valueFromEnv
+        ? (p.authMode.valueTemplate || p.authMode.value || "")
+        : (typeof p.authMode === "object" ? (p.authMode.value || "") : "");
+      const keyPlaceholder = typeof p.authMode === "object" && p.authMode.valueFromEnv
+        ? p.authMode.valueTemplate || ""
+        : "sk-...";
       return '<div class="provider-item" data-origin-name="' + esc(name) + '">' +
         '<div class="provider-head">' +
         '<label class="field"><span class="sr-only">' + __t__('provider') + '</span><input data-k="providerName" value="' + esc(name) + '" placeholder="' + (window.__getLocale__() === 'zh' ? '例如：中转站' : 'e.g. Gateway') + '" /></label>' +
@@ -1626,7 +1632,7 @@ export function renderAdminHtml(
           '<option value="inject"' + (authModeKind === "inject" ? " selected" : "") + '>' + __t__('injectKey') + '</option>' +
           '<option value="passthrough"' + (authModeKind === "passthrough" ? " selected" : "") + '>' + __t__('passthrough') + '</option>' +
         '</select></label>' +
-        '<label class="field">' + __t__('apiKey') + '<input data-k="apiKey" type="password" autocomplete="new-password" value="' + esc(keyValue) + '" placeholder="sk-..." /></label>' +
+        '<label class="field">' + __t__('apiKey') + '<input data-k="apiKey" type="password" autocomplete="new-password" value="' + esc(keyValue) + '" placeholder="' + esc(keyPlaceholder) + '" /></label>' +
         '</div></div>';
     }
 
@@ -1902,12 +1908,18 @@ export function renderAdminHtml(
         const prevInject = prev?.authMode && typeof prev.authMode === "object" && prev.authMode.type === "inject"
           ? prev.authMode
           : null;
+
+        // Check if input matches the template (either empty or exact match with valueTemplate)
+        const inputMatchesTemplate = prevInject?.valueTemplate
+          && (apiKey === "" || apiKey === prevInject.valueTemplate);
+
         const preservePrevInject = authModeKind === "inject"
           && prevInject
           && (
             apiKey === String(prevInject.value || "")
-            || (apiKey === "" && (prevInject.valueFromEnv || prevInject.valueTemplate))
+            || inputMatchesTemplate
           );
+
         providers[name] = {
           ...(prev && typeof prev === "object" ? prev : {}),
           baseURL: get("baseURL"),
