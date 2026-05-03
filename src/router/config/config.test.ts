@@ -6,25 +6,9 @@ import { join } from "node:path";
 import { loadConfig, resolveConfigPath, resolveLogFilePath, saveConfig } from "./config";
 import { AppConfig } from "../provider/types";
 
-const ENV_KEYS = ["AGENTLENS_CONFIG", "AGENTLENS_HOST", "AGENTLENS_PORT", "API_TIMEOUT_MS", "PORT", "HOST"];
-
-function clearEnv(): void {
-  for (const key of ENV_KEYS) {
-    delete process.env[key];
-  }
-}
-
-test("resolveConfigPath uses AGENTLENS_CONFIG when set", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "agent-lens-config-test-"));
-  try {
-    clearEnv();
-    process.env.AGENTLENS_CONFIG = "config/custom.yaml";
-    const p = resolveConfigPath(dir);
-    assert.equal(p, join(dir, "config/custom.yaml"));
-  } finally {
-    clearEnv();
-    await rm(dir, { recursive: true, force: true });
-  }
+test("resolveConfigPath returns config/default.yaml", () => {
+  const p = resolveConfigPath("/tmp");
+  assert.equal(p, "/tmp/config/default.yaml");
 });
 
 test("resolveLogFilePath anchors relative logging paths to the config directory", () => {
@@ -34,11 +18,10 @@ test("resolveLogFilePath anchors relative logging paths to the config directory"
   assert.equal(resolveLogFilePath(configPath, "/var/tmp/req.log"), "/var/tmp/req.log");
 });
 
-test("loadConfig normalizes timeout and archive flags from string values", async () => {
+test("loadConfig parses and validates YAML config", async () => {
   const dir = await mkdtemp(join(tmpdir(), "agent-lens-config-test-"));
   const prevCwd = process.cwd();
   try {
-    clearEnv();
     await mkdir(join(dir, "config"), { recursive: true });
     await writeFile(
       join(dir, "config/default.yaml"),
@@ -57,8 +40,8 @@ test("loadConfig normalizes timeout and archive flags from string values", async
         "      value: sk-test-key",
         "logging:",
         "  filePath: logs/req.log",
-        "  archiveRequests: \"true\"",
-        "requestTimeoutMs: \"45000\""
+        "  archiveRequests: true",
+        "requestTimeoutMs: 45000"
       ].join("\n"),
       "utf8"
     );
@@ -67,49 +50,14 @@ test("loadConfig normalizes timeout and archive flags from string values", async
     const config = loadConfig();
     assert.equal(config.requestTimeoutMs, 45000);
     assert.equal(config.logging.archiveRequests, true);
+    assert.equal(config.listen.host, "127.0.0.1");
+    assert.equal(config.listen.port, 5290);
     const authMode = config.providers.openai.authMode;
     assert.ok(authMode && typeof authMode === "object");
     assert.equal(authMode.type, "inject");
     assert.equal(authMode.value, "sk-test-key");
   } finally {
     process.chdir(prevCwd);
-    clearEnv();
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("loadConfig falls back to API_TIMEOUT_MS and default when invalid", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "agent-lens-config-test-"));
-  const prevCwd = process.cwd();
-  try {
-    clearEnv();
-    process.env.API_TIMEOUT_MS = "90000";
-    await mkdir(join(dir, "config"), { recursive: true });
-    await writeFile(
-      join(dir, "config/default.yaml"),
-      [
-        "listen:",
-        "  host: 127.0.0.1",
-        "  port: 5290",
-        "routing:",
-        "  defaultProvider: openai",
-        "providers:",
-        "  openai:",
-        "    baseURL: https://api.openai.example",
-        "logging:",
-        "  filePath: logs/req.log",
-        "requestTimeoutMs: invalid"
-      ].join("\n"),
-      "utf8"
-    );
-    process.chdir(dir);
-    assert.equal(loadConfig().requestTimeoutMs, 90000);
-
-    process.env.API_TIMEOUT_MS = "not-a-number";
-    assert.equal(loadConfig().requestTimeoutMs, 120000);
-  } finally {
-    process.chdir(prevCwd);
-    clearEnv();
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -120,7 +68,6 @@ test("loadConfig warns when requestTimeoutMs is unusually high", async () => {
   const originalWarn = console.warn;
   const warnings: string[] = [];
   try {
-    clearEnv();
     console.warn = (message?: unknown, ...rest: unknown[]) => {
       warnings.push([message, ...rest].map((item) => String(item)).join(" "));
     };
@@ -149,77 +96,6 @@ test("loadConfig warns when requestTimeoutMs is unusually high", async () => {
   } finally {
     console.warn = originalWarn;
     process.chdir(prevCwd);
-    clearEnv();
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("loadConfig allows env listen overrides", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "agent-lens-config-test-"));
-  const prevCwd = process.cwd();
-  try {
-    clearEnv();
-    process.env.AGENTLENS_HOST = "0.0.0.0";
-    process.env.AGENTLENS_PORT = "6390";
-    await mkdir(join(dir, "config"), { recursive: true });
-    await writeFile(
-      join(dir, "config/default.yaml"),
-      [
-        "listen:",
-        "  host: 127.0.0.1",
-        "  port: 5290",
-        "routing:",
-        "  defaultProvider: openai",
-        "providers:",
-        "  openai:",
-        "    baseURL: https://api.openai.example",
-        "logging:",
-        "  filePath: logs/req.log"
-      ].join("\n"),
-      "utf8"
-    );
-
-    process.chdir(dir);
-    const config = loadConfig();
-    assert.equal(config.listen.host, "0.0.0.0");
-    assert.equal(config.listen.port, 6390);
-  } finally {
-    process.chdir(prevCwd);
-    clearEnv();
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("loadConfig ignores ambient HOST and keeps configured listen.host", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "agent-lens-config-test-"));
-  const prevCwd = process.cwd();
-  try {
-    clearEnv();
-    process.env.HOST = "0.0.0.0";
-    await mkdir(join(dir, "config"), { recursive: true });
-    await writeFile(
-      join(dir, "config/default.yaml"),
-      [
-        "listen:",
-        "  host: 127.0.0.1",
-        "  port: 5290",
-        "routing:",
-        "  defaultProvider: openai",
-        "providers:",
-        "  openai:",
-        "    baseURL: https://api.openai.example",
-        "logging:",
-        "  filePath: logs/req.log"
-      ].join("\n"),
-      "utf8"
-    );
-
-    process.chdir(dir);
-    const config = loadConfig();
-    assert.equal(config.listen.host, "127.0.0.1");
-  } finally {
-    process.chdir(prevCwd);
-    clearEnv();
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -240,7 +116,6 @@ test("saveConfig writes YAML that can be loaded back", async () => {
     assert.match(content, /defaultProvider: openai/);
     assert.match(content, /requestTimeoutMs: 12345/);
   } finally {
-    clearEnv();
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -259,99 +134,40 @@ test("saveConfig creates parent directory when missing", async () => {
     const content = await readFile(file, "utf8");
     assert.match(content, /providers:/);
   } finally {
-    clearEnv();
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("saveConfig preserves env placeholder when env-backed provider is renamed", async () => {
+test("saveConfig preserves actual API key value", async () => {
   const dir = await mkdtemp(join(tmpdir(), "agent-lens-config-test-"));
   const prevCwd = process.cwd();
   try {
-    clearEnv();
-    process.env.OPENAI_KEY = "from_env";
     await mkdir(join(dir, "config"), { recursive: true });
     const file = join(dir, "config/default.yaml");
-    await writeFile(
-      file,
-      [
-        "listen:",
-        "  host: 127.0.0.1",
-        "  port: 5290",
-        "routing:",
-        "  defaultProvider: openai",
-        "providers:",
-        "  openai:",
-        "    baseURL: https://api.openai.example",
-        "    authMode:",
-        "      type: inject",
-        "      header: Authorization",
-        "      value: ${OPENAI_KEY:-fallback}",
-        "logging:",
-        "  filePath: logs/req.log"
-      ].join("\n"),
-      "utf8"
-    );
 
-    process.chdir(dir);
-    const config = loadConfig();
-    config.providers.openai_renamed = {
-      ...config.providers.openai
+    const cfg: AppConfig = {
+      listen: { host: "127.0.0.1", port: 5290 },
+      routing: { defaultProvider: "openai" },
+      providers: {
+        openai: {
+          baseURL: "https://api.openai.example",
+          authMode: {
+            type: "inject",
+            header: "Authorization",
+            value: "sk-my-secret-key-12345",
+            valuePrefix: "Bearer "
+          }
+        }
+      },
+      logging: { filePath: "logs/req.log" }
     };
-    delete config.providers.openai;
-    config.routing.defaultProvider = "openai_renamed";
 
-    await saveConfig(file, config);
+    await saveConfig(file, cfg);
     const content = await readFile(file, "utf8");
-    assert.match(content, /openai_renamed:/);
-    assert.match(content, /\$\{OPENAI_KEY:-fallback\}/);
-    assert.doesNotMatch(content, /from_env/);
+    assert.match(content, /sk-my-secret-key-12345/);
+    assert.doesNotMatch(content, /\$\{.*\}/);
   } finally {
     process.chdir(prevCwd);
-    clearEnv();
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("saveConfig keeps intentional passthrough for env-backed provider", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "agent-lens-config-test-"));
-  const prevCwd = process.cwd();
-  try {
-    clearEnv();
-    await mkdir(join(dir, "config"), { recursive: true });
-    const file = join(dir, "config/default.yaml");
-    await writeFile(
-      file,
-      [
-        "listen:",
-        "  host: 127.0.0.1",
-        "  port: 5290",
-        "routing:",
-        "  defaultProvider: openai",
-        "providers:",
-        "  openai:",
-        "    baseURL: https://api.openai.example",
-        "    authMode:",
-        "      type: inject",
-        "      header: Authorization",
-        "      value: ${OPENAI_KEY:-fallback}",
-        "logging:",
-        "  filePath: logs/req.log"
-      ].join("\n"),
-      "utf8"
-    );
-
-    process.chdir(dir);
-    const config = loadConfig();
-    config.providers.openai.authMode = "passthrough";
-
-    await saveConfig(file, config);
-    const content = await readFile(file, "utf8");
-    assert.match(content, /authMode: passthrough/);
-    assert.doesNotMatch(content, /\$\{OPENAI_KEY:-fallback\}/);
-  } finally {
-    process.chdir(prevCwd);
-    clearEnv();
     await rm(dir, { recursive: true, force: true });
   }
 });

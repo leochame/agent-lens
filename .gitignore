@@ -1,13 +1,3 @@
 node_modules/
 dist/
 logs/
-.env
-
-# IDE
-.idea/
-
-# Claude Code
-.agentlens/
-
-# Config
-config/default.yaml
