@@ -266,19 +266,11 @@ export function forwardRequest(input: ForwardRequest): Promise<ForwardResult> {
   const headers = buildForwardHeaders(req.headers, upstreamHost, decision.provider.hostHeader, input.providerNameHeader);
 
   if (decision.provider.authMode && decision.provider.authMode !== "passthrough") {
-    const directValue = decision.provider.authMode.value;
-    const envKey = decision.provider.authMode.valueFromEnv;
-    const envValue = envKey ? process.env[envKey] : undefined;
-    const resolvedValue =
-      typeof directValue === "string" && directValue.length > 0
-        ? directValue
-        : typeof envValue === "string" && envValue.length > 0
-          ? envValue
-          : undefined;
+    const authValue = decision.provider.authMode.value;
     const prefix = decision.provider.authMode.valuePrefix ?? "";
     const headerKey = decision.provider.authMode.header.toLowerCase();
-    if (resolvedValue) {
-      headers[headerKey] = `${prefix}${resolvedValue}`;
+    if (authValue) {
+      headers[headerKey] = `${prefix}${authValue}`;
     }
   }
 

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { loadConfig, resolveConfigPath, resolveLogFilePath, saveConfig } from "./config";
 import { AppConfig } from "../provider/types";
 
-const ENV_KEYS = ["AGENTLENS_CONFIG", "AGENTLENS_HOST", "AGENTLENS_PORT", "API_TIMEOUT_MS", "OPENAI_KEY", "PORT", "HOST"];
+const ENV_KEYS = ["AGENTLENS_CONFIG", "AGENTLENS_HOST", "AGENTLENS_PORT", "API_TIMEOUT_MS", "PORT", "HOST"];
 
 function clearEnv(): void {
   for (const key of ENV_KEYS) {
@@ -34,17 +34,12 @@ test("resolveLogFilePath anchors relative logging paths to the config directory"
   assert.equal(resolveLogFilePath(configPath, "/var/tmp/req.log"), "/var/tmp/req.log");
 });
 
-test("loadConfig resolves env placeholders and normalizes timeout/archive flags", async () => {
+test("loadConfig normalizes timeout and archive flags from string values", async () => {
   const dir = await mkdtemp(join(tmpdir(), "agent-lens-config-test-"));
   const prevCwd = process.cwd();
   try {
     clearEnv();
     await mkdir(join(dir, "config"), { recursive: true });
-    await writeFile(
-      join(dir, ".env"),
-      "OPENAI_KEY=from_dotenv\n",
-      "utf8"
-    );
     await writeFile(
       join(dir, "config/default.yaml"),
       [
@@ -59,7 +54,7 @@ test("loadConfig resolves env placeholders and normalizes timeout/archive flags"
         "    authMode:",
         "      type: inject",
         "      header: Authorization",
-        "      value: ${OPENAI_KEY:-fallback}",
+        "      value: sk-test-key",
         "logging:",
         "  filePath: logs/req.log",
         "  archiveRequests: \"true\"",
@@ -75,9 +70,7 @@ test("loadConfig resolves env placeholders and normalizes timeout/archive flags"
     const authMode = config.providers.openai.authMode;
     assert.ok(authMode && typeof authMode === "object");
     assert.equal(authMode.type, "inject");
-    assert.equal(authMode.value, "from_dotenv");
-    assert.equal(authMode.valueFromEnv, "OPENAI_KEY");
-    assert.equal((authMode as { valueTemplate?: string }).valueTemplate, "${OPENAI_KEY:-fallback}");
+    assert.equal(authMode.value, "sk-test-key");
   } finally {
     process.chdir(prevCwd);
     clearEnv();

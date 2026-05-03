@@ -4,7 +4,6 @@ export type AuthMode =
       type: "inject";
       header: string;
       value?: string;
-      valueFromEnv?: string;
       valuePrefix?: string;
     };
 
