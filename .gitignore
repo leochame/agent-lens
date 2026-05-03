@@ -8,3 +8,6 @@ logs/
 
 # Claude Code
 .agentlens/
+
+# Config
+config/default.yaml
